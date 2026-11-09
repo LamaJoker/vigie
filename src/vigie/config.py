@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 DELAI_PAR_DEFAUT = 10.0
 PARALLELES_PAR_DEFAUT = 10
+ECHECS_AVANT_ALERTE_PAR_DEFAUT = 2
 
 
 class ErreurConfiguration(Exception):
@@ -25,6 +26,8 @@ class Configuration:
     sites: tuple[Site, ...]
     delai: float = DELAI_PAR_DEFAUT  # secondes accordées à chaque site
     paralleles: int = PARALLELES_PAR_DEFAUT  # sites testés en même temps
+    # échecs consécutifs avant d'ouvrir un incident : évite d'alerter pour un raté isolé
+    echecs_avant_alerte: int = ECHECS_AVANT_ALERTE_PAR_DEFAUT
 
 
 def charger(chemin: Path) -> Configuration:
@@ -55,6 +58,15 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
             f"sonde.paralleles doit être un entier supérieur ou égal à 1, reçu {paralleles!r}"
         )
 
+    alertes = donnees.get("alertes", {})
+    if not isinstance(alertes, dict):
+        raise ErreurConfiguration("la section [alertes] est mal formée")
+    echecs = alertes.get("echecs_avant_alerte", ECHECS_AVANT_ALERTE_PAR_DEFAUT)
+    if not _est_entier(echecs) or echecs < 1:
+        raise ErreurConfiguration(
+            f"alertes.echecs_avant_alerte doit être un entier d'au moins 1, reçu {echecs!r}"
+        )
+
     sites_bruts = donnees.get("sites", [])
     if not isinstance(sites_bruts, list) or not sites_bruts:
         raise ErreurConfiguration("la configuration doit déclarer au moins un site [[sites]]")
@@ -80,7 +92,12 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
 
         sites.append(Site(nom=nom.strip(), url=url))
 
-    return Configuration(sites=tuple(sites), delai=float(delai), paralleles=paralleles)
+    return Configuration(
+        sites=tuple(sites),
+        delai=float(delai),
+        paralleles=paralleles,
+        echecs_avant_alerte=echecs,
+    )
 
 
 def url_valide(url: str) -> bool:

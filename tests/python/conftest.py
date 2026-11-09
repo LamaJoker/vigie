@@ -1,6 +1,7 @@
 """Outils partagés par les tests : un petit serveur HTTP local et une base PostgreSQL jetable."""
 
 import http.server
+import json
 import shutil
 import subprocess
 import threading
@@ -12,7 +13,32 @@ import pytest
 
 
 class Gestionnaire(http.server.BaseHTTPRequestHandler):
-    """/200, /503... répondent ce code ; /lent attend 3 s ; /redirection renvoie vers /200."""
+    """Faux sites et faux Discord pour les tests.
+
+    GET  /200, /503...   répond ce code
+    GET  /lent           attend 3 s avant de répondre 200
+    GET  /redirection    renvoie vers /200
+    GET  /bascule        répond Gestionnaire.code_bascule (un site qu'on fait tomber)
+    POST /webhook        faux Discord : garde le message reçu et répond 204
+    POST /webhook-500    faux Discord en panne : répond ce code
+    """
+
+    recus: list[dict] = []
+    code_bascule = 200
+
+    def do_POST(self) -> None:
+        corps = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        chemin = self.path.strip("/")
+        if chemin == "webhook":
+            Gestionnaire.recus.append(json.loads(corps))
+            code = 204
+        elif chemin.startswith("webhook-") and chemin[8:].isdigit():
+            code = int(chemin[8:])
+        else:
+            code = 404
+        self.send_response(code)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self) -> None:
         chemin = self.path.strip("/")
@@ -20,6 +46,8 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
         if chemin == "lent":
             time.sleep(3)
             code = 200
+        elif chemin == "bascule":
+            code = Gestionnaire.code_bascule
         elif chemin == "redirection":
             code = 302
             entetes["Location"] = "/200"
@@ -42,7 +70,7 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
 @pytest.fixture(autouse=True)
 def environnement_propre(monkeypatch: pytest.MonkeyPatch) -> None:
     """Les variables VIGIE_* de la machine ne doivent pas influencer les tests."""
-    for variable in ("VIGIE_CONFIG", "VIGIE_LOG", "VIGIE_DATABASE_URL"):
+    for variable in ("VIGIE_CONFIG", "VIGIE_LOG", "VIGIE_DATABASE_URL", "VIGIE_DISCORD_WEBHOOK"):
         monkeypatch.delenv(variable, raising=False)
 
 
@@ -59,11 +87,24 @@ def serveur() -> Iterator[str]:
 
 
 @pytest.fixture
+def webhook(serveur: str) -> str:
+    """Adresse du faux Discord, remis à zéro, avec le site « bascule » en ligne."""
+    Gestionnaire.recus.clear()
+    Gestionnaire.code_bascule = 200
+    return f"{serveur}/webhook"
+
+
+@pytest.fixture
 def ecrire_config(tmp_path: Path):
     """Écrit un fichier de configuration avec les adresses données."""
 
-    def _ecrire(urls: list[str], delai: float = 2, paralleles: int = 10) -> Path:
-        lignes = [f"[sonde]\ndelai = {delai}\nparalleles = {paralleles}\n"]
+    def _ecrire(
+        urls: list[str], delai: float = 2, paralleles: int = 10, echecs_avant_alerte: int = 2
+    ) -> Path:
+        lignes = [
+            f"[sonde]\ndelai = {delai}\nparalleles = {paralleles}\n",
+            f"[alertes]\nechecs_avant_alerte = {echecs_avant_alerte}\n",
+        ]
         for numero, url in enumerate(urls, start=1):
             lignes.append(f'[[sites]]\nnom = "site {numero}"\nurl = "{url}"\n')
         chemin = tmp_path / "vigie.toml"
@@ -139,6 +180,6 @@ def base_vide(postgres: str) -> str:
 
     with base.connecter(postgres) as conn:
         base.initialiser(conn)
-        conn.execute("TRUNCATE sondes")
+        conn.execute("TRUNCATE sondes, incidents")
         conn.commit()
     return postgres

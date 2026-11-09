@@ -4,6 +4,7 @@ import pytest
 
 from vigie.config import (
     DELAI_PAR_DEFAUT,
+    ECHECS_AVANT_ALERTE_PAR_DEFAUT,
     PARALLELES_PAR_DEFAUT,
     ErreurConfiguration,
     Site,
@@ -104,3 +105,19 @@ def test_section_sonde_mal_formee():
 def test_bloc_de_site_mal_forme():
     with pytest.raises(ErreurConfiguration, match="bloc"):
         analyser({"sites": ["https://example.com"]})
+
+
+def test_seuil_d_alerte_par_defaut_et_reglable():
+    assert analyser(un_site()).echecs_avant_alerte == ECHECS_AVANT_ALERTE_PAR_DEFAUT
+    assert analyser({"alertes": {"echecs_avant_alerte": 3}, **un_site()}).echecs_avant_alerte == 3
+
+
+@pytest.mark.parametrize("echecs", [0, -2, 1.5, "2", True])
+def test_seuil_d_alerte_invalide(echecs):
+    with pytest.raises(ErreurConfiguration, match="echecs_avant_alerte"):
+        analyser({"alertes": {"echecs_avant_alerte": echecs}, **un_site()})
+
+
+def test_section_alertes_mal_formee():
+    with pytest.raises(ErreurConfiguration, match=r"\[alertes\]"):
+        analyser({"alertes": ["discord"], **un_site()})

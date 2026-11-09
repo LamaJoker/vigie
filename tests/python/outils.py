@@ -4,6 +4,10 @@ from datetime import datetime, timedelta
 
 from vigie.sonde import Resultat
 
+# Une seule heure de référence pour tous les tests : les durées calculées entre deux
+# résultats sont exactes, au lieu de dépendre des quelques millisecondes écoulées.
+MAINTENANT = datetime.now().astimezone().replace(microsecond=0)
+
 
 def resultat(
     url: str,
@@ -14,9 +18,8 @@ def resultat(
     erreur: str | None = None,
 ) -> Resultat:
     """Fabrique un résultat de sonde daté dans le passé."""
-    date = (datetime.now().astimezone() - il_y_a).isoformat(timespec="seconds")
     return Resultat(
-        date=date,
+        date=(MAINTENANT - il_y_a).isoformat(timespec="seconds"),
         nom=nom or url,
         url=url,
         etat=etat,

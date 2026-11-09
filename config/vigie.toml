@@ -4,6 +4,13 @@
 delai = 10       # secondes accordées à chaque site, redirections comprises
 paralleles = 10  # nombre de sites testés en même temps
 
+[alertes]
+# Nombre d'échecs consécutifs avant d'ouvrir un incident et d'envoyer une alerte.
+# Avec un passage toutes les 5 minutes, 2 échecs = environ 10 minutes de panne.
+# L'adresse du webhook Discord est un secret : elle se règle dans la variable
+# d'environnement VIGIE_DISCORD_WEBHOOK (voir .env.exemple), jamais ici.
+echecs_avant_alerte = 2
+
 [[sites]]
 nom = "Wikipédia"
 url = "https://www.wikipedia.org"

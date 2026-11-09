@@ -44,9 +44,13 @@ Compte rendu : [docs/semaines/semaine-04.md](docs/semaines/semaine-04.md)
 
 ### Semaine 5 : alertes
 
-- [ ] Notification Discord quand un site tombe et quand il revient
-- [ ] Une seule alerte par incident (pas de spam)
-- [ ] Configuration par variables d'environnement
+Compte rendu : [docs/semaines/semaine-05.md](docs/semaines/semaine-05.md)
+
+- [x] Notification Discord quand un site tombe et quand il revient
+- [x] Une seule alerte par incident (pas de spam), garantie par la base
+- [x] Configuration par variables d'environnement (`.env`, jamais commité)
+- [x] Alerte renvoyée au passage suivant si Discord ne l'a pas reçue
+- [x] Incidents affichés sur la page de statut et dans l'API
 
 ## Phase 2 : construire et livrer (semaines 6 à 8)
 
