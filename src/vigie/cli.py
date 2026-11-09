@@ -1,11 +1,16 @@
 """Ligne de commande de Vigie.
 
-    vigie sonder   [--config FICHIER] [--log FICHIER] [--base URL]
-    vigie init-db  [--base URL]
-    vigie serveur  [--config FICHIER] [--base URL] [--hote ADRESSE] [--port PORT]
+    vigie sonder         [--config FICHIER] [--log FICHIER] [--base URL]
+    vigie init-db        [--base URL]
+    vigie serveur        [--config FICHIER] [--base URL] [--hote ADRESSE] [--port PORT]
+    vigie tester-alerte
 
 Codes de sortie de « sonder » : 0 si tous les sites répondent, 1 si au moins un est
 en panne, 2 en cas d'erreur (configuration, base de données injoignable...).
+
+Les alertes ont besoin de la base (c'est elle qui se souvient des incidents en cours).
+Elles partent sur Discord si VIGIE_DISCORD_WEBHOOK est définie, sinon elles sont
+seulement affichées.
 """
 
 import argparse
@@ -13,6 +18,7 @@ import asyncio
 import fcntl
 import os
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from vigie import __version__
@@ -21,6 +27,7 @@ from vigie.journal import ajouter
 from vigie.sonde import Resultat, sonder_tous
 
 CONFIG_PAR_DEFAUT = "config/vigie.toml"
+VARIABLE_WEBHOOK = "VIGIE_DISCORD_WEBHOOK"
 
 
 def log_par_defaut() -> Path:
@@ -69,6 +76,10 @@ def construire_analyseur() -> argparse.ArgumentParser:
         "--hote", default="127.0.0.1", help="adresse d'écoute (défaut : 127.0.0.1)"
     )
     serveur.add_argument("--port", type=int, default=8000, help="port d'écoute (défaut : 8000)")
+
+    commandes.add_parser(
+        "tester-alerte", help=f"envoyer une alerte d'essai sur Discord (${VARIABLE_WEBHOOK})"
+    )
     return analyseur
 
 
@@ -94,14 +105,39 @@ def formater(resultat: Resultat) -> str:
     return ligne
 
 
-def enregistrer_en_base(url: str, resultats: list[Resultat]) -> bool:
+def notifier(conn, alertes_a_envoyer) -> None:
+    """Envoie les alertes en attente et note celles qui sont parties."""
+    from vigie import alertes, notification
+
+    for alerte in alertes_a_envoyer:
+        print(alerte.en_texte())
+
+    webhook = os.environ.get(VARIABLE_WEBHOOK)
+    if not webhook:
+        erreur(f"{VARIABLE_WEBHOOK} n'est pas définie : alertes affichées ici seulement")
+        envoyees = list(alertes_a_envoyer)
+    else:
+        envoyees, problemes = notification.envoyer_discord(webhook, alertes_a_envoyer)
+        for probleme in problemes:
+            erreur(f"alerte non envoyée, nouvel essai au prochain passage : {probleme}")
+
+    for alerte in envoyees:
+        alertes.marquer_envoyee(conn, alerte)
+
+
+def traiter_en_base(url: str, config: Configuration, resultats: list[Resultat]) -> bool:
+    """Enregistre les résultats, met à jour les incidents et envoie les alertes."""
     import psycopg
 
-    from vigie import base
+    from vigie import alertes, base
 
     try:
         with base.connecter(url) as conn:
             base.enregistrer(conn, resultats)
+            alertes.mettre_a_jour_incidents(conn, resultats, config.echecs_avant_alerte)
+            en_attente = alertes.alertes_en_attente(conn)
+            if en_attente:
+                notifier(conn, en_attente)
     except psycopg.Error as probleme:
         erreur(f"enregistrement en base impossible : {probleme}")
         return False
@@ -123,10 +159,10 @@ def commande_sonder(config_chemin: Path, log: Path, url_base: str | None) -> int
             return 0
         resultats = asyncio.run(sonder_tous(config))
         ajouter(log, resultats)
-        base_ok = url_base is None or enregistrer_en_base(url_base, resultats)
+        for resultat in resultats:
+            print(formater(resultat))
+        base_ok = url_base is None or traiter_en_base(url_base, config, resultats)
 
-    for resultat in resultats:
-        print(formater(resultat))
     if not base_ok:
         return 2
     return 0 if all(resultat.en_ligne for resultat in resultats) else 1
@@ -163,10 +199,36 @@ def commande_serveur(config_chemin: Path, url_base: str | None, hote: str, port:
     return 0
 
 
+def commande_tester_alerte() -> int:
+    webhook = os.environ.get(VARIABLE_WEBHOOK)
+    if not webhook:
+        return erreur(f"{VARIABLE_WEBHOOK} n'est pas définie (voir .env.exemple)")
+
+    from vigie import notification
+    from vigie.alertes import PANNE, Alerte
+
+    essai = Alerte(
+        incident=0,
+        type=PANNE,
+        nom="Essai de Vigie",
+        url="https://github.com/LamaJoker/vigie",
+        debut=datetime.now().astimezone(),
+        fin=None,
+        cause="message d'essai : la configuration des alertes fonctionne",
+    )
+    _, problemes = notification.envoyer_discord(webhook, [essai])
+    if problemes:
+        return erreur(problemes[0])
+    print("Alerte d'essai envoyée sur Discord.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = construire_analyseur().parse_args(argv)
     if arguments.commande == "sonder":
         return commande_sonder(arguments.config, arguments.log, arguments.base)
     if arguments.commande == "init-db":
         return commande_init_db(arguments.base)
+    if arguments.commande == "tester-alerte":
+        return commande_tester_alerte()
     return commande_serveur(arguments.config, arguments.base, arguments.hote, arguments.port)

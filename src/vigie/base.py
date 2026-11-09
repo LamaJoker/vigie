@@ -90,7 +90,7 @@ def etats(
         for ligne in conn.execute(
             "SELECT DISTINCT ON (url) url, date, etat, code, duree_ms, erreur"
             " FROM sondes WHERE url = ANY(%s)"
-            " ORDER BY url, date DESC",
+            " ORDER BY url, date DESC, id DESC",
             (urls,),
         )
     }
@@ -128,6 +128,6 @@ def historique(conn: psycopg.Connection, url: str, limite: int = 50) -> list[dic
     """Derniers résultats d'un site, du plus récent au plus ancien."""
     return conn.execute(
         "SELECT date, etat, code, duree_ms, erreur FROM sondes"
-        " WHERE url = %s ORDER BY date DESC LIMIT %s",
+        " WHERE url = %s ORDER BY date DESC, id DESC LIMIT %s",
         (url, limite),
     ).fetchall()

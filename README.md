@@ -2,7 +2,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 4 sur 14).** Version actuelle : une sonde Python, une base PostgreSQL, une API et une page de statut.
+**Statut : en construction (semaine 5 sur 14).** Version actuelle : une sonde Python, une base PostgreSQL, une API, une page de statut et des alertes Discord.
 
 ![Page de statut de Vigie](docs/images/page-statut.jpg)
 
@@ -54,8 +54,22 @@ La base de développement n'ouvre aucun port réseau : elle n'est joignable que 
 | `/` | page de statut |
 | `/api/sites` | état de chaque site, en JSON |
 | `/api/sites/historique?url=…&limite=50` | derniers résultats d'un site |
+| `/api/incidents?limite=20` | derniers incidents (pannes), en cours ou terminés |
 | `/sante` | l'application et sa base répondent-elles ? (code 503 si la base est injoignable) |
 | `/docs` | documentation interactive de l'API |
+
+### Alertes
+
+Quand un site échoue plusieurs fois de suite (2 par défaut, réglable dans `[alertes]` de `config/vigie.toml`), Vigie ouvre un **incident** et envoie **une** alerte. Quand le site revient, elle ferme l'incident et envoie une alerte de rétablissement, avec la durée de la panne. Rien entre les deux : pas de spam.
+
+Les alertes partent sur Discord. L'adresse du webhook est un secret : elle se met dans un fichier `.env`, jamais commité.
+
+```bash
+cp .env.exemple .env      # puis y coller l'adresse du webhook Discord
+make tester-alerte        # envoie un message d'essai
+```
+
+Sans webhook, les alertes s'affichent seulement dans le terminal. Une alerte que Discord n'a pas pu recevoir est renvoyée au passage suivant. Les alertes ont besoin de la base de données, qui se souvient des incidents en cours.
 
 ### La sonde en ligne de commande
 
@@ -96,7 +110,7 @@ Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemi
 ### Vérifier le code
 
 ```bash
-make tests   # 82 tests Python (pytest) et 17 tests Bash (bats)
+make tests   # 128 tests Python (pytest) et 17 tests Bash (bats)
 make lint    # style et qualité : ruff pour Python, ShellCheck pour Bash
 ```
 
@@ -132,8 +146,9 @@ vigie/
 ├── ROADMAP.md        feuille de route sur 14 semaines
 ├── Makefile          raccourcis : installer, tests, lint, sonder
 ├── pyproject.toml    description du paquet Python et de ses dépendances
+├── .env.exemple      modèle du fichier des secrets (.env, jamais commité)
 ├── config/           configuration de la sonde (sites, délais)
-├── src/vigie/        le code Python : sonde, base de données, API, page de statut
+├── src/vigie/        le code Python : sonde, base de données, alertes, API, page de statut
 ├── sonde/            la version Bash et son installation cron
 ├── tests/
 │   ├── python/       tests pytest

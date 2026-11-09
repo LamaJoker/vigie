@@ -3,6 +3,7 @@
 GET /                          page de statut lisible par un humain
 GET /api/sites                 état de chaque site, en JSON
 GET /api/sites/historique      derniers résultats d'un site (?url=...&limite=...)
+GET /api/incidents             derniers incidents (pannes)
 GET /sante                     l'application et sa base répondent-elles ?
 GET /docs                      documentation interactive de l'API (générée par FastAPI)
 """
@@ -15,7 +16,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
-from vigie import __version__, base
+from vigie import __version__, alertes, base
 from vigie.config import Configuration
 
 
@@ -27,6 +28,7 @@ def creer_app(config: Configuration, database_url: str) -> FastAPI:
     )
     modeles = Jinja2Templates(directory=str(resources.files("vigie").joinpath("modeles")))
     urls_connues = {site.url for site in config.sites}
+    urls_surveillees = [site.url for site in config.sites]
 
     def lire_etats() -> list[base.EtatSite]:
         with base.connecter(database_url) as conn:
@@ -56,14 +58,22 @@ def creer_app(config: Configuration, database_url: str) -> FastAPI:
         with base.connecter(database_url) as conn:
             return base.historique(conn, url, limite)
 
+    @app.get("/api/incidents", summary="Derniers incidents (pannes), du plus récent au plus ancien")
+    def api_incidents(limite: int = Query(20, ge=1, le=200)) -> list[dict]:
+        with base.connecter(database_url) as conn:
+            return alertes.incidents_recents(conn, urls_surveillees, limite)
+
     @app.get("/", response_class=HTMLResponse, include_in_schema=False)
     def page_statut(request: Request) -> HTMLResponse:
-        etats = lire_etats()
+        with base.connecter(database_url) as conn:
+            etats = base.etats(conn, config.sites)
+            incidents = alertes.incidents_recents(conn, urls_surveillees, 10)
         return modeles.TemplateResponse(
             request,
             "statut.html",
             {
                 "etats": etats,
+                "incidents": incidents,
                 "en_panne": [etat for etat in etats if etat.etat == "DOWN"],
                 "mesures_existent": any(etat.etat is not None for etat in etats),
                 "mise_a_jour": datetime.now().astimezone().strftime("%d/%m/%Y à %H:%M:%S"),

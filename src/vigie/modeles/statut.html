@@ -44,6 +44,9 @@
     .etat.inconnu { background: var(--inconnu-fond); color: var(--inconnu); }
     .erreur { display: block; font-size: .8rem; color: var(--panne); white-space: normal; }
     .pied { margin-top: 20px; font-size: .85rem; color: var(--doux); }
+    h2 { margin: 32px 0 12px; font-size: 1.15rem; }
+    .vide { color: var(--doux); }
+    td.cause { white-space: normal; min-width: 14em; color: var(--doux); }
   </style>
 </head>
 <body>
@@ -96,6 +99,39 @@
       </tbody>
     </table>
   </div>
+
+  <h2>Derniers incidents</h2>
+  {% if incidents %}
+  <div class="tableau">
+    <table>
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>Début</th>
+          <th>Fin</th>
+          <th class="nombre">Durée</th>
+          <th>Cause</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for incident in incidents %}
+        <tr>
+          <td>{{ incident.nom }}</td>
+          <td>{{ incident.debut.astimezone().strftime("%d/%m %H:%M") }}</td>
+          <td>
+            {% if incident.en_cours %}<span class="etat down">en cours</span>
+            {% else %}{{ incident.fin.astimezone().strftime("%d/%m %H:%M") }}{% endif %}
+          </td>
+          <td class="nombre">{{ incident.duree }}</td>
+          <td class="cause">{{ incident.cause or "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="vide">Aucun incident enregistré.</p>
+  {% endif %}
 
   <p class="pied">
     Page générée le {{ mise_a_jour }}, actualisée toutes les minutes ·

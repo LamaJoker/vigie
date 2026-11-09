@@ -111,6 +111,38 @@ def test_la_page_protege_contre_l_injection_html(remplir, base_vide):
     assert "&lt;script&gt;" in page
 
 
+def test_api_incidents(client, base_vide):
+    _ouvrir_un_incident(base_vide)
+    reponse = client.get("/api/incidents")
+    assert reponse.status_code == 200
+    [incident] = reponse.json()
+    assert incident["nom"] == "Site A"
+    assert incident["en_cours"] is True
+    assert incident["cause"] == "code HTTP 503"
+
+
+def test_page_sans_incident(client, remplir):
+    remplir(resultat(A))
+    assert "Aucun incident enregistré" in client.get("/").text
+
+
+def test_page_avec_un_incident_en_cours(client, base_vide):
+    _ouvrir_un_incident(base_vide)
+    page = client.get("/").text
+    assert "Derniers incidents" in page
+    assert "en cours" in page
+    assert "code HTTP 503" in page
+
+
+def _ouvrir_un_incident(url_base):
+    from vigie import alertes
+
+    panne = resultat(A, "DOWN", 503, nom="Site A")
+    with base.connecter(url_base) as conn:
+        base.enregistrer(conn, [panne])
+        alertes.mettre_a_jour_incidents(conn, [panne], echecs_avant_alerte=1)
+
+
 def test_la_documentation_de_l_api_est_publiee(client):
     assert client.get("/docs").status_code == 200
     assert client.get("/openapi.json").json()["info"]["title"] == "Vigie"

@@ -10,7 +10,12 @@ PGDATA := $(CURDIR)/.pgdata
 PGPORT := 5433
 BASE_DEV := postgresql://vigie@/vigie?host=$(PGDATA)&port=$(PGPORT)
 
-.PHONY: aide installer tests tests-python tests-bash lint format sonder serveur db-demarrer db-arreter
+# Secrets locaux (webhook Discord...) : lus dans .env s'il existe, jamais commité.
+-include .env
+export VIGIE_DISCORD_WEBHOOK
+
+.PHONY: aide installer tests tests-python tests-bash lint format sonder serveur \
+	db-demarrer db-arreter tester-alerte
 
 aide:
 	@echo "make installer     crée l'environnement virtuel et installe Vigie"
@@ -21,6 +26,7 @@ aide:
 	@echo "make sonder        teste les sites et enregistre les résultats en base"
 	@echo "make serveur       lance la page de statut sur http://127.0.0.1:8000"
 	@echo "make db-arreter    arrête la base de développement"
+	@echo "make tester-alerte envoie une alerte d'essai sur Discord (voir .env.exemple)"
 
 installer: $(VENV)/.installe
 
@@ -67,3 +73,6 @@ sonder: installer
 
 serveur: installer
 	VIGIE_DATABASE_URL='$(BASE_DEV)' $(BIN)/vigie serveur
+
+tester-alerte: installer
+	$(BIN)/vigie tester-alerte
