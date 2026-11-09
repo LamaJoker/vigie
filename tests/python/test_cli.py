@@ -7,8 +7,10 @@ import sys
 
 import pytest
 
-from vigie import __version__
+from vigie import __version__, base
 from vigie.cli import main
+
+BASE_INJOIGNABLE = "postgresql://vigie@/aucune?host=/dossier/inexistant&port=1"
 
 
 def lire_journal(chemin) -> list[dict]:
@@ -106,6 +108,76 @@ def test_une_commande_est_obligatoire():
     with pytest.raises(SystemExit) as sortie:
         main([])
     assert sortie.value.code == 2
+
+
+def test_sonder_enregistre_aussi_en_base(serveur, ecrire_config, tmp_path, base_vide):
+    config = ecrire_config([f"{serveur}/200", f"{serveur}/503"])
+    log = tmp_path / "sondes.jsonl"
+
+    code = main(["sonder", "--config", str(config), "--log", str(log), "--base", base_vide])
+
+    assert code == 1
+    with base.connecter(base_vide) as conn:
+        lignes = conn.execute("SELECT etat, code FROM sondes ORDER BY code").fetchall()
+    assert [(ligne["etat"], ligne["code"]) for ligne in lignes] == [("UP", 200), ("DOWN", 503)]
+
+
+def test_sonder_avec_une_base_injoignable(serveur, ecrire_config, tmp_path, capsys):
+    config = ecrire_config([f"{serveur}/200"])
+    log = tmp_path / "sondes.jsonl"
+
+    code = main(["sonder", "--config", str(config), "--log", str(log), "--base", BASE_INJOIGNABLE])
+
+    assert code == 2
+    assert "enregistrement en base impossible" in capsys.readouterr().err
+    assert len(lire_journal(log)) == 1  # le fichier garde quand même la mesure
+
+
+def test_init_db_cree_les_tables(postgres, capsys):
+    with base.connecter(postgres) as conn:
+        conn.execute("DROP TABLE IF EXISTS sondes")
+        conn.commit()
+
+    assert main(["init-db", "--base", postgres]) == 0
+    assert "prête" in capsys.readouterr().out
+    with base.connecter(postgres) as conn:
+        assert conn.execute("SELECT to_regclass('sondes') AS t").fetchone()["t"] == "sondes"
+
+
+def test_init_db_sans_adresse(monkeypatch, capsys):
+    monkeypatch.delenv("VIGIE_DATABASE_URL", raising=False)
+    assert main(["init-db"]) == 2
+    assert "VIGIE_DATABASE_URL" in capsys.readouterr().err
+
+
+def test_init_db_base_injoignable(capsys):
+    assert main(["init-db", "--base", BASE_INJOIGNABLE]) == 2
+    assert "impossible" in capsys.readouterr().err
+
+
+def test_serveur_sans_adresse_de_base(monkeypatch):
+    monkeypatch.delenv("VIGIE_DATABASE_URL", raising=False)
+    assert main(["serveur"]) == 2
+
+
+def test_serveur_avec_une_configuration_absente(tmp_path):
+    absente = str(tmp_path / "absente.toml")
+    assert main(["serveur", "--config", absente, "--base", BASE_INJOIGNABLE]) == 2
+
+
+def test_serveur_lance_uvicorn(ecrire_config, monkeypatch):
+    appels = {}
+    monkeypatch.setattr(
+        "uvicorn.run", lambda app, host, port: appels.update(app=app, host=host, port=port)
+    )
+    config = ecrire_config(["https://a.test"])
+
+    code = main(["serveur", "--config", str(config), "--base", BASE_INJOIGNABLE, "--port", "9000"])
+
+    assert code == 0
+    assert appels["host"] == "127.0.0.1"
+    assert appels["port"] == 9000
+    assert appels["app"].title == "Vigie"
 
 
 def test_python_m_vigie_affiche_la_version():

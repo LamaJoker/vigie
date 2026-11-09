@@ -35,9 +35,12 @@ Compte rendu : [docs/semaines/semaine-03.md](docs/semaines/semaine-03.md)
 
 ### Semaine 4 : API et base de données
 
-- [ ] Résultats stockés dans PostgreSQL
-- [ ] API FastAPI pour consulter l'état des sites
-- [ ] Page de statut simple
+Compte rendu : [docs/semaines/semaine-04.md](docs/semaines/semaine-04.md)
+
+- [x] Résultats stockés dans PostgreSQL
+- [x] API FastAPI pour consulter l'état des sites
+- [x] Page de statut simple
+- [x] Point de contrôle `/sante`, tests sur une vraie base jetable
 
 ### Semaine 5 : alertes
 

@@ -2,7 +2,9 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 3 sur 14).** Version actuelle : une sonde en Python qui teste les sites en parallèle.
+**Statut : en construction (semaine 4 sur 14).** Version actuelle : une sonde Python, une base PostgreSQL, une API et une page de statut.
+
+![Page de statut de Vigie](docs/images/page-statut.jpg)
 
 ## Pourquoi ce projet
 
@@ -33,12 +35,29 @@ Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
 
 ## Utilisation
 
-Prérequis : Linux avec Python 3.12 ou plus récent, `make` et le module `venv` (sur Ubuntu : `sudo apt install python3-venv make`).
+Prérequis : Linux avec Python 3.12 ou plus récent, `make`, le module `venv` et PostgreSQL (sur Ubuntu : `sudo apt install python3-venv make postgresql`).
 
 ```bash
-make installer   # crée l'environnement virtuel .venv et installe Vigie
-make sonder      # teste une fois les sites de config/vigie.toml
+make installer     # crée l'environnement virtuel .venv et installe Vigie
+make db-demarrer   # lance une base PostgreSQL de développement dans .pgdata/
+make sonder        # teste les sites de config/vigie.toml et enregistre les résultats
+make serveur       # page de statut sur http://127.0.0.1:8000
+make db-arreter    # arrête la base de développement
 ```
+
+La base de développement n'ouvre aucun port réseau : elle n'est joignable que par un fichier socket dans `.pgdata/`, et elle ne tourne que lorsqu'on la démarre.
+
+### API
+
+| Adresse | Contenu |
+|---|---|
+| `/` | page de statut |
+| `/api/sites` | état de chaque site, en JSON |
+| `/api/sites/historique?url=…&limite=50` | derniers résultats d'un site |
+| `/sante` | l'application et sa base répondent-elles ? (code 503 si la base est injoignable) |
+| `/docs` | documentation interactive de l'API |
+
+### La sonde en ligne de commande
 
 Exemple de résultat :
 
@@ -54,7 +73,9 @@ Chaque résultat est aussi ajouté à `~/.local/state/vigie/sondes.jsonl`, un ob
 {"date": "2026-11-09T15:46:16+01:00", "nom": "Example", "url": "https://example.com", "etat": "UP", "code": 200, "duree_ms": 99, "erreur": null}
 ```
 
-La commande sort avec le code `0` si tous les sites répondent, `1` si au moins un est en panne, `2` en cas d'erreur d'utilisation.
+Quand une base est indiquée (`--base` ou variable `VIGIE_DATABASE_URL`), les résultats y sont aussi enregistrés. L'adresse de la base n'est jamais écrite dans le code ni dans la configuration, parce qu'elle peut contenir un mot de passe.
+
+La commande sort avec le code `0` si tous les sites répondent, `1` si au moins un est en panne, `2` en cas d'erreur (configuration invalide, base injoignable…).
 
 ### Configuration
 
@@ -75,11 +96,11 @@ Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemi
 ### Vérifier le code
 
 ```bash
-make tests   # 51 tests Python (pytest) et 17 tests Bash (bats)
+make tests   # 82 tests Python (pytest) et 17 tests Bash (bats)
 make lint    # style et qualité : ruff pour Python, ShellCheck pour Bash
 ```
 
-Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
+Les tests de la base lancent leur propre PostgreSQL jetable, détruit à la fin. Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
 
 ### Version Bash (semaine 2)
 
@@ -112,14 +133,15 @@ vigie/
 ├── Makefile          raccourcis : installer, tests, lint, sonder
 ├── pyproject.toml    description du paquet Python et de ses dépendances
 ├── config/           configuration de la sonde (sites, délais)
-├── src/vigie/        le code Python
+├── src/vigie/        le code Python : sonde, base de données, API, page de statut
 ├── sonde/            la version Bash et son installation cron
 ├── tests/
 │   ├── python/       tests pytest
 │   └── bash/         tests bats et serveur HTTP de test
 ├── .github/          modèle de pull request
 └── docs/
-    └── semaines/     un compte rendu par semaine
+    ├── semaines/     un compte rendu par semaine
+    └── images/       captures d'écran
 ```
 
 ## Conventions

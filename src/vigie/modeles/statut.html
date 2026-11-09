@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="60">
+  <title>Vigie · état des sites</title>
+  <style>
+    :root {
+      --fond: #f6f7f9; --carte: #ffffff; --texte: #1d2330; --doux: #5d6678; --bord: #dfe3ea;
+      --ok: #1f7a4d; --ok-fond: #e3f4ea; --panne: #b42318; --panne-fond: #fde8e6;
+      --inconnu: #5d6678; --inconnu-fond: #eceff3;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fond: #12151b; --carte: #1b2029; --texte: #e8ebf1; --doux: #9aa3b4; --bord: #2c3340;
+        --ok: #5fd39a; --ok-fond: #183528; --panne: #ff8a7d; --panne-fond: #3d1c19;
+        --inconnu: #9aa3b4; --inconnu-fond: #262c37;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--fond); color: var(--texte);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 32px 16px; }
+    h1 { margin: 0 0 4px; font-size: 1.6rem; }
+    .sous-titre { margin: 0 0 24px; color: var(--doux); }
+    .bandeau { padding: 14px 18px; border-radius: 10px; font-weight: 600; margin: 0 0 24px; }
+    .bandeau.ok { background: var(--ok-fond); color: var(--ok); }
+    .bandeau.panne { background: var(--panne-fond); color: var(--panne); }
+    .bandeau.inconnu { background: var(--inconnu-fond); color: var(--inconnu); }
+    .tableau { overflow-x: auto; background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; }
+    table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--bord); white-space: nowrap; }
+    th { font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; color: var(--doux); }
+    tr:last-child td { border-bottom: 0; }
+    td.nombre, th.nombre { text-align: right; }
+    a { color: inherit; }
+    .url { display: block; font-size: .8rem; color: var(--doux); }
+    .etat { display: inline-block; min-width: 4.5em; text-align: center; padding: 2px 10px; border-radius: 999px; font-size: .85rem; font-weight: 700; }
+    .etat.up { background: var(--ok-fond); color: var(--ok); }
+    .etat.down { background: var(--panne-fond); color: var(--panne); }
+    .etat.inconnu { background: var(--inconnu-fond); color: var(--inconnu); }
+    .erreur { display: block; font-size: .8rem; color: var(--panne); white-space: normal; }
+    .pied { margin-top: 20px; font-size: .85rem; color: var(--doux); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Vigie</h1>
+  <p class="sous-titre">État des sites surveillés</p>
+
+  {% if not mesures_existent %}
+    <p class="bandeau inconnu">Aucune mesure pour l'instant : lancez « vigie sonder ».</p>
+  {% elif en_panne %}
+    <p class="bandeau panne">{{ en_panne | length }} site{{ "s" if en_panne | length > 1 }} en panne : {{ en_panne | map(attribute="nom") | join(", ") }}</p>
+  {% else %}
+    <p class="bandeau ok">Tous les sites répondent</p>
+  {% endif %}
+
+  <div class="tableau">
+    <table>
+      <thead>
+        <tr>
+          <th>Site</th>
+          <th>État</th>
+          <th class="nombre">Code</th>
+          <th class="nombre">Temps de réponse</th>
+          <th class="nombre">Disponibilité 24 h</th>
+          <th>Dernière mesure</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for site in etats %}
+        <tr>
+          <td>
+            {{ site.nom }}
+            <a class="url" href="{{ site.url }}" rel="noopener">{{ site.url }}</a>
+          </td>
+          <td>
+            <span class="etat {{ (site.etat or 'inconnu') | lower }}">{{ site.etat or "?" }}</span>
+            {% if site.erreur %}<span class="erreur">{{ site.erreur }}</span>{% endif %}
+          </td>
+          <td class="nombre">{{ site.code if site.code is not none else "—" }}</td>
+          <td class="nombre">{{ "%d ms" | format(site.duree_ms) if site.duree_ms is not none else "—" }}</td>
+          <td class="nombre">
+            {% if site.disponibilite is not none %}
+              {{ ("%.1f" | format(site.disponibilite * 100)) | replace(".", ",") }} %
+              <span class="url">{{ site.mesures }} mesure{{ "s" if site.mesures > 1 }}</span>
+            {% else %}—{% endif %}
+          </td>
+          <td>{{ site.date.astimezone().strftime("%d/%m %H:%M:%S") if site.date else "—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <p class="pied">
+    Page générée le {{ mise_a_jour }}, actualisée toutes les minutes ·
+    <a href="/api/sites">API JSON</a> · <a href="/docs">documentation de l'API</a>
+  </p>
+</main>
+</body>
+</html>
