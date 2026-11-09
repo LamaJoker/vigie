@@ -1,18 +1,17 @@
 # Feuille de route
 
-14 semaines, environ 20 heures par semaine. Chaque semaine se termine par une entrée dans le [journal de bord](docs/journal/) et au moins un commit poussé sur GitHub.
+14 étapes, une par semaine. Chaque étape est livrée par une ou plusieurs pull requests relues et validées, et se termine par un compte rendu dans [docs/semaines/](docs/semaines/).
 
 ## Phase 1 : les bases (semaines 1 à 5)
 
 ### Semaine 1 : poste de travail et Git
 
-Guide : [docs/guides/semaine-01.md](docs/guides/semaine-01.md)
+Compte rendu : [docs/semaines/semaine-01.md](docs/semaines/semaine-01.md)
 
 - [x] Ubuntu installé sous WSL2, VS Code relié à WSL
-- [x] Git configuré, premier commit
-- [ ] Dépôt publié sur GitHub
+- [x] Git configuré, dépôt publié sur GitHub
+- [x] Travail organisé en pull requests
 - [ ] Compte Linux sécurisé (mot de passe, `sudo` protégé)
-- [ ] Bases du terminal Linux
 - [ ] Clé SSH créée et ajoutée sur GitHub
 
 ### Semaine 2 : Linux et Bash (Vigie v0)
