@@ -1,0 +1,8 @@
+# Sites surveillés par Vigie : une adresse http ou https par ligne.
+# Tout ce qui suit un # est un commentaire.
+
+https://www.wikipedia.org
+https://github.com
+https://www.debian.org
+https://www.data.gouv.fr
+https://example.com

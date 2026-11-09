@@ -16,9 +16,12 @@ Compte rendu : [docs/semaines/semaine-01.md](docs/semaines/semaine-01.md)
 
 ### Semaine 2 : Linux et Bash (Vigie v0)
 
-- [ ] Script Bash qui teste une liste d'URL avec `curl`
-- [ ] Résultats écrits dans un fichier de log
-- [ ] Lancement automatique toutes les 5 minutes avec `cron`
+Compte rendu : [docs/semaines/semaine-02.md](docs/semaines/semaine-02.md)
+
+- [x] Script Bash qui teste une liste d'URL avec `curl`
+- [x] Résultats écrits dans un fichier de log
+- [x] Lancement automatique toutes les 5 minutes avec `cron` (script d'installation)
+- [x] Tests automatisés (bats) et analyse statique (ShellCheck)
 
 ### Semaine 3 : Python (Vigie v1)
 
