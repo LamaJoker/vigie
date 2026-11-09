@@ -8,11 +8,21 @@
 
 Vigie est mon projet de formation au métier de DevOps. L'application est volontairement simple : l'essentiel du travail porte sur la chaîne qui la construit, la teste, la déploie et la supervise, comme en entreprise.
 
-L'évolution se suit semaine après semaine :
+## Méthode de travail
 
-- la [feuille de route](ROADMAP.md) liste les 14 étapes et ce qui est terminé ;
-- le [journal de bord](docs/journal/) raconte chaque semaine : ce que j'ai fait, ce que j'ai appris, ce qui a coincé et le temps passé ;
-- l'historique des commits et des pull requests montre le travail au fil de l'eau.
+Le projet est réalisé avec un assistant IA de programmation (Claude, d'Anthropic), que je supervise :
+
+- je fixe les objectifs de chaque étape et je valide les choix techniques ;
+- l'assistant réalise le travail et propose chaque changement dans une pull request, avec ses explications ;
+- je relis, je pose mes questions et je décide de fusionner ou non.
+
+Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
+
+## Suivre l'évolution
+
+- La [feuille de route](ROADMAP.md) liste les 14 étapes et ce qui est terminé.
+- Un [compte rendu par semaine](docs/semaines/) explique ce qui a été fait, pourquoi, comment le vérifier, et le temps passé.
+- Les [pull requests](https://github.com/LamaJoker/vigie/pulls?q=is%3Apr) montrent chaque changement et sa validation.
 
 ## Ce que Vigie fera
 
@@ -40,12 +50,14 @@ L'évolution se suit semaine après semaine :
 vigie/
 ├── README.md        ce fichier
 ├── ROADMAP.md       feuille de route sur 14 semaines
+├── .github/         modèle de pull request
 └── docs/
-    ├── guides/      instructions de chaque semaine
-    └── journal/     journal de bord hebdomadaire
+    └── semaines/    un compte rendu par semaine
 ```
 
 ## Conventions
+
+Chaque changement passe par une branche et une pull request avant d'arriver sur `main`.
 
 Les messages de commit suivent le format [Conventional Commits](https://www.conventionalcommits.org/fr/v1.0.0/) :
 
@@ -53,9 +65,9 @@ Les messages de commit suivent le format [Conventional Commits](https://www.conv
 |---|---|
 | `feat:` | nouvelle fonctionnalité |
 | `fix:` | correction d'un bug |
-| `docs:` | documentation, journal |
+| `docs:` | documentation, comptes rendus |
 | `test:` | tests |
 | `ci:` | intégration continue |
 | `chore:` | maintenance (dépendances, configuration) |
 
-Exemple : `docs: journal de la semaine 1`
+Exemple : `docs: compte rendu de la semaine 1`
