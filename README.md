@@ -2,7 +2,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 1 sur 14).**
+**Statut : en construction (semaine 2 sur 14).** Version actuelle : une sonde en Bash.
 
 ## Pourquoi ce projet
 
@@ -31,6 +31,40 @@ Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
 - Afficher une page de statut : sites en ligne, incidents en cours, historique.
 - Envoyer une alerte (Discord, e-mail) quand un site ne répond plus, puis quand il revient.
 
+## Utilisation (version Bash)
+
+Prérequis : Linux avec `bash`, `curl` et `flock` (présents sur Ubuntu).
+
+```bash
+# Tester une fois les sites listés dans sonde/sites.txt
+./sonde/vigie.sh
+
+# Lire les résultats
+tail ~/.local/state/vigie/sondes.log
+
+# Lancer la sonde toutes les 5 minutes avec cron (--retirer pour l'enlever)
+./sonde/installer-cron.sh
+```
+
+Exemple de résultat :
+
+```
+2026-11-09T15:00:06+01:00 UP 200 205 https://www.wikipedia.org
+2026-11-09T15:00:07+01:00 UP 200 73 https://example.com
+```
+
+Chaque ligne donne la date, l'état (`UP` ou `DOWN`), le code HTTP (`000` si le site ne répond pas), le temps de réponse en millisecondes et l'adresse.
+
+La sonde sort avec le code `0` si tous les sites répondent, `1` si au moins un est en panne, `2` en cas d'erreur d'utilisation. Variables réglables : `VIGIE_SITES`, `VIGIE_LOG`, `VIGIE_DELAI` (voir l'en-tête de [sonde/vigie.sh](sonde/vigie.sh)).
+
+### Vérifier le code
+
+```bash
+sudo apt install shellcheck bats
+shellcheck sonde/*.sh   # analyse statique des scripts
+bats tests/             # 17 tests, avec un petit serveur HTTP local
+```
+
 ## Compétences travaillées
 
 | Domaine | Outils |
@@ -51,6 +85,8 @@ vigie/
 ├── README.md        ce fichier
 ├── ROADMAP.md       feuille de route sur 14 semaines
 ├── .github/         modèle de pull request
+├── sonde/           la sonde Bash, la liste des sites, l'installation cron
+├── tests/           tests automatisés (bats) et serveur HTTP de test
 └── docs/
     └── semaines/    un compte rendu par semaine
 ```
