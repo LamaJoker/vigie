@@ -1,6 +1,7 @@
 """Ligne de commande de Vigie.
 
     vigie sonder         [--config FICHIER] [--log FICHIER] [--base URL]
+    vigie surveiller     [mêmes options] [--intervalle SECONDES] [--passages N]
     vigie init-db        [--base URL]
     vigie serveur        [--config FICHIER] [--base URL] [--hote ADRESSE] [--port PORT]
     vigie tester-alerte
@@ -17,7 +18,9 @@ import argparse
 import asyncio
 import fcntl
 import os
+import signal
 import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -55,14 +58,36 @@ def construire_analyseur() -> argparse.ArgumentParser:
         help="adresse de la base PostgreSQL (défaut : $VIGIE_DATABASE_URL)",
     )
 
-    sonder = commandes.add_parser(
-        "sonder", parents=[option_config, option_base], help="tester une fois tous les sites"
-    )
-    sonder.add_argument(
+    option_log = argparse.ArgumentParser(add_help=False)
+    option_log.add_argument(
         "--log",
         type=Path,
         default=Path(os.environ["VIGIE_LOG"]) if "VIGIE_LOG" in os.environ else log_par_defaut(),
         help="fichier des résultats (défaut : $VIGIE_LOG ou ~/.local/state/vigie/sondes.jsonl)",
+    )
+
+    commandes.add_parser(
+        "sonder",
+        parents=[option_config, option_base, option_log],
+        help="tester une fois tous les sites",
+    )
+
+    surveiller = commandes.add_parser(
+        "surveiller",
+        parents=[option_config, option_base, option_log],
+        help="tester les sites en boucle, à intervalle régulier (pour un conteneur)",
+    )
+    surveiller.add_argument(
+        "--intervalle",
+        type=float,
+        default=float(os.environ.get("VIGIE_INTERVALLE", 300)),
+        help="secondes entre deux passages (défaut : $VIGIE_INTERVALLE ou 300)",
+    )
+    surveiller.add_argument(
+        "--passages",
+        type=int,
+        default=0,
+        help="nombre de passages avant l'arrêt (défaut : 0, sans fin)",
     )
 
     commandes.add_parser(
@@ -149,8 +174,15 @@ def commande_sonder(config_chemin: Path, log: Path, url_base: str | None) -> int
     if config is None:
         return 2
 
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with open(log.with_name(log.name + ".verrou"), "w") as verrou:
+    chemin_verrou = log.with_name(log.name + ".verrou")
+    try:
+        log.parent.mkdir(parents=True, exist_ok=True)
+        chemin_verrou.touch()
+    except OSError as probleme:
+        # Message clair au lieu d'un plantage (cas trouvé par l'essai Docker).
+        return erreur(f"journal inaccessible : {probleme}")
+
+    with open(chemin_verrou, "w") as verrou:
         # Un verrou empêche deux sondes de tourner en même temps.
         try:
             fcntl.flock(verrou, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -158,7 +190,10 @@ def commande_sonder(config_chemin: Path, log: Path, url_base: str | None) -> int
             print("vigie: une autre sonde est déjà en cours, abandon", file=sys.stderr)
             return 0
         resultats = asyncio.run(sonder_tous(config))
-        ajouter(log, resultats)
+        try:
+            ajouter(log, resultats)
+        except OSError as probleme:
+            erreur(f"écriture du journal impossible : {probleme}")
         for resultat in resultats:
             print(formater(resultat))
         base_ok = url_base is None or traiter_en_base(url_base, config, resultats)
@@ -166,6 +201,46 @@ def commande_sonder(config_chemin: Path, log: Path, url_base: str | None) -> int
     if not base_ok:
         return 2
     return 0 if all(resultat.en_ligne for resultat in resultats) else 1
+
+
+def commande_surveiller(
+    config_chemin: Path, log: Path, url_base: str | None, intervalle: float, passages: int
+) -> int:
+    """Lance « sonder » en boucle, jusqu'à un signal d'arrêt (SIGTERM, Ctrl+C).
+
+    Docker arrête un conteneur en lui envoyant SIGTERM : on termine proprement le
+    passage en cours au lieu d'être coupé au milieu d'une écriture en base.
+    """
+    if intervalle < 0 or passages < 0:
+        return erreur("--intervalle et --passages ne peuvent pas être négatifs")
+    # Une configuration invalide est une erreur définitive : inutile de boucler.
+    if lire_config(config_chemin) is None:
+        return 2
+
+    arret = threading.Event()
+
+    def demander_arret(numero: int, _cadre: object) -> None:
+        nom = signal.Signals(numero).name
+        print(f"vigie: {nom} reçu, arrêt après le passage en cours", file=sys.stderr, flush=True)
+        arret.set()
+
+    anciens = {sig: signal.signal(sig, demander_arret) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        numero = 0
+        while not arret.is_set():
+            numero += 1
+            heure = datetime.now().astimezone().strftime("%H:%M:%S")
+            print(f"--- passage {numero} à {heure}", flush=True)
+            # Une erreur (base injoignable...) n'arrête pas la boucle : elle peut se résoudre.
+            commande_sonder(config_chemin, log, url_base)
+            sys.stdout.flush()
+            if passages and numero >= passages:
+                break
+            arret.wait(intervalle)
+    finally:
+        for sig, ancien in anciens.items():
+            signal.signal(sig, ancien)
+    return 0
 
 
 def commande_init_db(url_base: str | None) -> int:
@@ -227,6 +302,14 @@ def main(argv: list[str] | None = None) -> int:
     arguments = construire_analyseur().parse_args(argv)
     if arguments.commande == "sonder":
         return commande_sonder(arguments.config, arguments.log, arguments.base)
+    if arguments.commande == "surveiller":
+        return commande_surveiller(
+            arguments.config,
+            arguments.log,
+            arguments.base,
+            arguments.intervalle,
+            arguments.passages,
+        )
     if arguments.commande == "init-db":
         return commande_init_db(arguments.base)
     if arguments.commande == "tester-alerte":
