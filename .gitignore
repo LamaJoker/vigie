@@ -10,6 +10,9 @@ venv/
 build/
 dist/
 
+# Base PostgreSQL de développement (make db-demarrer)
+.pgdata/
+
 # Résultats et verrous de la sonde
 *.log
 *.verrou
