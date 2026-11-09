@@ -1,0 +1,91 @@
+# Vigie complète en conteneurs : base PostgreSQL, API et page de statut, sonde en continu.
+#
+#   make docker-demarrer   construit l'image, crée le mot de passe de la base, lance tout
+#   make docker-etat       état des conteneurs et de leurs contrôles de santé
+#   make docker-journaux   suit les journaux
+#   make docker-arreter    arrête tout (les données de la base sont gardées)
+#
+# Les secrets viennent du fichier .env (jamais commité) : VIGIE_MOT_DE_PASSE_BASE
+# (créé automatiquement) et VIGIE_DISCORD_WEBHOOK (facultatif).
+
+name: vigie
+
+x-vigie: &vigie
+  image: vigie:local
+  pull_policy: never  # image construite ici (service api), jamais téléchargée
+  init: true  # petit gestionnaire de processus : relaie les signaux, nettoie les zombies
+  environment:
+    VIGIE_DATABASE_URL: postgresql://vigie:${VIGIE_MOT_DE_PASSE_BASE:?définir VIGIE_MOT_DE_PASSE_BASE dans .env (make docker-demarrer le crée)}@base:5432/vigie
+  volumes:
+    # La liste des sites se modifie sans reconstruire l'image.
+    - ./config/vigie.toml:/etc/vigie/vigie.toml:ro
+  read_only: true  # le système de fichiers de l'image est en lecture seule...
+  tmpfs:
+    # ...sauf ces dossiers de travail, en mémoire, appartenant à l'utilisateur vigie (10001)
+    - /tmp
+    - /var/lib/vigie:uid=10001,gid=10001,mode=0700
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+
+services:
+  base:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: vigie
+      POSTGRES_DB: vigie
+      POSTGRES_PASSWORD: ${VIGIE_MOT_DE_PASSE_BASE:?définir VIGIE_MOT_DE_PASSE_BASE dans .env}
+    volumes:
+      - donnees-base:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vigie -d vigie"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    # Aucun port publié : la base n'est joignable que par les autres conteneurs.
+
+  init-db:
+    <<: *vigie
+    command: ["init-db"]
+    depends_on:
+      base:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *vigie
+    build: .
+    command: ["serveur", "--hote", "0.0.0.0"]
+    ports:
+      # Publié seulement sur la machine elle-même (127.0.0.1), pas sur le réseau.
+      - "127.0.0.1:${VIGIE_PORT:-8000}:8000"
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/sante', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  sonde:
+    <<: *vigie
+    command: ["surveiller"]
+    environment:
+      VIGIE_DATABASE_URL: postgresql://vigie:${VIGIE_MOT_DE_PASSE_BASE:?définir VIGIE_MOT_DE_PASSE_BASE dans .env}@base:5432/vigie
+      VIGIE_DISCORD_WEBHOOK: ${VIGIE_DISCORD_WEBHOOK:-}
+      VIGIE_INTERVALLE: ${VIGIE_INTERVALLE:-300}
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  donnees-base:

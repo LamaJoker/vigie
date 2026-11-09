@@ -15,7 +15,8 @@ BASE_DEV := postgresql://vigie@/vigie?host=$(PGDATA)&port=$(PGPORT)
 export VIGIE_DISCORD_WEBHOOK
 
 .PHONY: aide installer tests tests-python tests-bash lint format sonder serveur \
-	db-demarrer db-arreter tester-alerte
+	db-demarrer db-arreter tester-alerte docker-secrets docker-demarrer docker-arreter \
+	docker-etat docker-journaux lint-docker tests-docker
 
 aide:
 	@echo "make installer     crée l'environnement virtuel et installe Vigie"
@@ -27,6 +28,14 @@ aide:
 	@echo "make serveur       lance la page de statut sur http://127.0.0.1:8000"
 	@echo "make db-arreter    arrête la base de développement"
 	@echo "make tester-alerte envoie une alerte d'essai sur Discord (voir .env.exemple)"
+	@echo ""
+	@echo "En conteneurs (Docker) :"
+	@echo "make docker-demarrer  construit l'image et lance base, API et sonde"
+	@echo "make docker-etat      état des conteneurs et de leurs contrôles de santé"
+	@echo "make docker-journaux  suit les journaux des conteneurs"
+	@echo "make docker-arreter   arrête les conteneurs (les données sont gardées)"
+	@echo "make lint-docker      vérifie le Dockerfile (hadolint) et compose.yaml"
+	@echo "make tests-docker     essai de bout en bout de la pile, dans un projet jetable"
 
 installer: $(VENV)/.installe
 
@@ -47,7 +56,7 @@ tests-bash:
 lint: installer
 	$(BIN)/ruff check .
 	$(BIN)/ruff format --check .
-	shellcheck sonde/*.sh
+	shellcheck sonde/*.sh tests/docker/*.sh
 
 format: installer
 	$(BIN)/ruff format .
@@ -76,3 +85,33 @@ serveur: installer
 
 tester-alerte: installer
 	$(BIN)/vigie tester-alerte
+
+# Crée .env si besoin et y ajoute un mot de passe aléatoire pour la base des conteneurs.
+docker-secrets:
+	@touch .env && chmod 600 .env
+	@grep -q '^VIGIE_MOT_DE_PASSE_BASE=.' .env || { \
+		sed -i '/^VIGIE_MOT_DE_PASSE_BASE=$$/d' .env; \
+		echo "VIGIE_MOT_DE_PASSE_BASE=$$(python3 -c 'import secrets; print(secrets.token_hex(24))')" >> .env; \
+		echo "Mot de passe de la base créé dans .env"; }
+
+docker-demarrer: docker-secrets
+	docker compose build
+	docker compose up -d
+	@echo "Vigie démarre : http://localhost:$${VIGIE_PORT:-8000} (make docker-etat pour suivre)"
+
+docker-arreter:
+	docker compose down
+
+docker-etat:
+	docker compose ps
+
+docker-journaux:
+	docker compose logs --follow --tail=50
+
+lint-docker:
+	docker run --rm -i hadolint/hadolint:latest-debian < Dockerfile
+	VIGIE_MOT_DE_PASSE_BASE=verification docker compose config --quiet
+	@echo "Dockerfile et compose.yaml : aucun problème"
+
+tests-docker:
+	tests/docker/essai-pile.sh

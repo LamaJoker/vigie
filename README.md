@@ -2,7 +2,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 5 sur 14).** Version actuelle : une sonde Python, une base PostgreSQL, une API, une page de statut et des alertes Discord.
+**Statut : en construction (semaine 6 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, le tout en conteneurs Docker.
 
 ![Page de statut de Vigie](docs/images/page-statut.jpg)
 
@@ -33,7 +33,28 @@ Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
 - Afficher une page de statut : sites en ligne, incidents en cours, historique.
 - Envoyer une alerte (Discord, e-mail) quand un site ne répond plus, puis quand il revient.
 
-## Utilisation
+## Démarrage rapide avec Docker
+
+Prérequis : Docker et Docker Compose.
+
+```bash
+make docker-demarrer   # construit l'image, crée le mot de passe de la base, lance tout
+make docker-etat       # les 3 services et leurs contrôles de santé
+```
+
+La page de statut est sur http://localhost:8000. La pile contient trois services :
+
+| Service | Rôle |
+|---|---|
+| `base` | PostgreSQL 18, sans port publié : seuls les autres conteneurs la joignent |
+| `api` | page de statut et API, publiée uniquement sur la machine (127.0.0.1) |
+| `sonde` | teste les sites toutes les 5 minutes (`VIGIE_INTERVALLE`) et envoie les alertes |
+
+Un service `init-db` crée les tables au démarrage, puis s'arrête. La liste des sites (`config/vigie.toml`) est lue depuis la machine : on la modifie sans reconstruire l'image. `make docker-arreter` arrête tout et garde les données. Pour les effacer aussi : `docker compose down --volumes`.
+
+Les conteneurs tournent sans droits root, avec un système de fichiers en lecture seule et sans aucune capacité Linux.
+
+## Utilisation sans Docker
 
 Prérequis : Linux avec Python 3.12 ou plus récent, `make`, le module `venv` et PostgreSQL (sur Ubuntu : `sudo apt install python3-venv make postgresql`).
 
@@ -110,8 +131,10 @@ Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemi
 ### Vérifier le code
 
 ```bash
-make tests   # 128 tests Python (pytest) et 17 tests Bash (bats)
-make lint    # style et qualité : ruff pour Python, ShellCheck pour Bash
+make tests          # 138 tests Python (pytest) et 17 tests Bash (bats)
+make lint           # style et qualité : ruff pour Python, ShellCheck pour Bash
+make lint-docker    # Dockerfile (hadolint) et compose.yaml
+make tests-docker   # essai de bout en bout de la pile, dans un projet jetable
 ```
 
 Les tests de la base lancent leur propre PostgreSQL jetable, détruit à la fin. Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
@@ -144,7 +167,10 @@ La première version, un script Bash, reste disponible :
 vigie/
 ├── README.md         ce fichier
 ├── ROADMAP.md        feuille de route sur 14 semaines
-├── Makefile          raccourcis : installer, tests, lint, sonder
+├── Makefile          raccourcis : installer, tests, lint, sonder, docker-demarrer...
+├── Dockerfile        image de Vigie, en deux étapes, sans root
+├── compose.yaml      la pile complète : base, API, sonde
+├── .dockerignore     ce qui n'entre jamais dans l'image (secrets, tests...)
 ├── pyproject.toml    description du paquet Python et de ses dépendances
 ├── .env.exemple      modèle du fichier des secrets (.env, jamais commité)
 ├── config/           configuration de la sonde (sites, délais)
@@ -152,7 +178,8 @@ vigie/
 ├── sonde/            la version Bash et son installation cron
 ├── tests/
 │   ├── python/       tests pytest
-│   └── bash/         tests bats et serveur HTTP de test
+│   ├── bash/         tests bats et serveur HTTP de test
+│   └── docker/       essai de bout en bout de la pile Docker
 ├── .github/          modèle de pull request
 └── docs/
     ├── semaines/     un compte rendu par semaine

@@ -56,8 +56,12 @@ Compte rendu : [docs/semaines/semaine-05.md](docs/semaines/semaine-05.md)
 
 ### Semaine 6 : Docker
 
-- [ ] Dockerfile multi-étapes, exécuté sans les droits root
-- [ ] docker-compose qui lance la sonde, l'API et PostgreSQL
+Compte rendu : [docs/semaines/semaine-06.md](docs/semaines/semaine-06.md)
+
+- [x] Dockerfile multi-étapes, exécuté sans les droits root
+- [x] Docker Compose qui lance la sonde, l'API et PostgreSQL
+- [x] Contrôles de santé, arrêt propre (SIGTERM), conteneurs en lecture seule
+- [x] Essai de bout en bout automatisé de la pile
 
 ### Semaine 7 : intégration continue
 

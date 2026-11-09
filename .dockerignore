@@ -1,0 +1,20 @@
+# Ce qui n'entre JAMAIS dans l'image : secrets, données locales, outils de développement.
+.env
+.env.*
+!.env.exemple
+secrets/
+.git/
+.github/
+.venv/
+.pgdata/
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+*.log
+*.jsonl
+tests/
+docs/
+sonde/
