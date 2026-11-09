@@ -1,6 +1,6 @@
 """Petit serveur HTTP local pour tester la sonde sans dépendre d'Internet.
 
-Utilisation : python3 serveur_test.py PORT
+Utilisation : python3 serveur_http.py PORT
 
   /200, /503, /404...  répond avec ce code HTTP
   /lent                attend 5 secondes avant de répondre 200

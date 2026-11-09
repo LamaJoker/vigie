@@ -3,7 +3,7 @@
 # une fausse commande « crontab » lit et écrit un simple fichier.
 
 setup() {
-  INSTALLEUR="$BATS_TEST_DIRNAME/../sonde/installer-cron.sh"
+  INSTALLEUR="$BATS_TEST_DIRNAME/../../sonde/installer-cron.sh"
   export XDG_STATE_HOME="$BATS_TEST_TMPDIR/state"
   export FAUSSE_CRONTAB="$BATS_TEST_TMPDIR/crontab"
 

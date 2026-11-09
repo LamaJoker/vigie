@@ -5,6 +5,10 @@ __pycache__/
 venv/
 .pytest_cache/
 .coverage
+.ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # Résultats et verrous de la sonde
 *.log

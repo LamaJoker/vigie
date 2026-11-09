@@ -76,7 +76,7 @@ Le premier essai de l'installeur cron lisait la crontab et la réécrivait **dan
 cd ~/vigie
 ./sonde/vigie.sh; echo "code de sortie : $?"
 shellcheck sonde/*.sh
-bats tests/
+bats tests/bash/   # les tests Bash ont été rangés dans tests/bash/ en semaine 3
 ```
 
 Pour activer le lancement automatique : `./sonde/installer-cron.sh`, puis `crontab -l` pour voir la tâche.

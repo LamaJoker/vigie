@@ -2,7 +2,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 2 sur 14).** Version actuelle : une sonde en Bash.
+**Statut : en construction (semaine 3 sur 14).** Version actuelle : une sonde en Python qui teste les sites en parallèle.
 
 ## Pourquoi ce projet
 
@@ -31,38 +31,63 @@ Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
 - Afficher une page de statut : sites en ligne, incidents en cours, historique.
 - Envoyer une alerte (Discord, e-mail) quand un site ne répond plus, puis quand il revient.
 
-## Utilisation (version Bash)
+## Utilisation
 
-Prérequis : Linux avec `bash`, `curl` et `flock` (présents sur Ubuntu).
+Prérequis : Linux avec Python 3.12 ou plus récent, `make` et le module `venv` (sur Ubuntu : `sudo apt install python3-venv make`).
 
 ```bash
-# Tester une fois les sites listés dans sonde/sites.txt
-./sonde/vigie.sh
-
-# Lire les résultats
-tail ~/.local/state/vigie/sondes.log
-
-# Lancer la sonde toutes les 5 minutes avec cron (--retirer pour l'enlever)
-./sonde/installer-cron.sh
+make installer   # crée l'environnement virtuel .venv et installe Vigie
+make sonder      # teste une fois les sites de config/vigie.toml
 ```
 
 Exemple de résultat :
 
 ```
-2026-11-09T15:00:06+01:00 UP 200 205 https://www.wikipedia.org
-2026-11-09T15:00:07+01:00 UP 200 73 https://example.com
+UP   200    194 ms  Wikipédia (https://www.wikipedia.org)
+UP   200    250 ms  GitHub (https://github.com)
+DOWN ---   2001 ms  Mon site (https://mon-site.example)  [pas de réponse en 2 s]
 ```
 
-Chaque ligne donne la date, l'état (`UP` ou `DOWN`), le code HTTP (`000` si le site ne répond pas), le temps de réponse en millisecondes et l'adresse.
+Chaque résultat est aussi ajouté à `~/.local/state/vigie/sondes.jsonl`, un objet JSON par ligne :
 
-La sonde sort avec le code `0` si tous les sites répondent, `1` si au moins un est en panne, `2` en cas d'erreur d'utilisation. Variables réglables : `VIGIE_SITES`, `VIGIE_LOG`, `VIGIE_DELAI` (voir l'en-tête de [sonde/vigie.sh](sonde/vigie.sh)).
+```json
+{"date": "2026-11-09T15:46:16+01:00", "nom": "Example", "url": "https://example.com", "etat": "UP", "code": 200, "duree_ms": 99, "erreur": null}
+```
+
+La commande sort avec le code `0` si tous les sites répondent, `1` si au moins un est en panne, `2` en cas d'erreur d'utilisation.
+
+### Configuration
+
+Les sites et les réglages sont dans [config/vigie.toml](config/vigie.toml) :
+
+```toml
+[sonde]
+delai = 10       # secondes accordées à chaque site, redirections comprises
+paralleles = 10  # nombre de sites testés en même temps
+
+[[sites]]
+nom = "Wikipédia"
+url = "https://www.wikipedia.org"
+```
+
+Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemins par défaut, tout comme les options `--config` et `--log` de `vigie sonder`.
 
 ### Vérifier le code
 
 ```bash
-sudo apt install shellcheck bats
-shellcheck sonde/*.sh   # analyse statique des scripts
-bats tests/             # 17 tests, avec un petit serveur HTTP local
+make tests   # 51 tests Python (pytest) et 17 tests Bash (bats)
+make lint    # style et qualité : ruff pour Python, ShellCheck pour Bash
+```
+
+Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
+
+### Version Bash (semaine 2)
+
+La première version, un script Bash, reste disponible :
+
+```bash
+./sonde/vigie.sh             # teste les sites de sonde/sites.txt
+./sonde/installer-cron.sh    # la lance toutes les 5 minutes (--retirer pour l'enlever)
 ```
 
 ## Compétences travaillées
@@ -82,13 +107,19 @@ bats tests/             # 17 tests, avec un petit serveur HTTP local
 
 ```
 vigie/
-├── README.md        ce fichier
-├── ROADMAP.md       feuille de route sur 14 semaines
-├── .github/         modèle de pull request
-├── sonde/           la sonde Bash, la liste des sites, l'installation cron
-├── tests/           tests automatisés (bats) et serveur HTTP de test
+├── README.md         ce fichier
+├── ROADMAP.md        feuille de route sur 14 semaines
+├── Makefile          raccourcis : installer, tests, lint, sonder
+├── pyproject.toml    description du paquet Python et de ses dépendances
+├── config/           configuration de la sonde (sites, délais)
+├── src/vigie/        le code Python
+├── sonde/            la version Bash et son installation cron
+├── tests/
+│   ├── python/       tests pytest
+│   └── bash/         tests bats et serveur HTTP de test
+├── .github/          modèle de pull request
 └── docs/
-    └── semaines/    un compte rendu par semaine
+    └── semaines/     un compte rendu par semaine
 ```
 
 ## Conventions
