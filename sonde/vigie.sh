@@ -22,7 +22,7 @@ DOSSIER_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SITES="${1:-${VIGIE_SITES:-$DOSSIER_SCRIPT/sites.txt}}"
 LOG="${VIGIE_LOG:-${XDG_STATE_HOME:-$HOME/.local/state}/vigie/sondes.log}"
 DELAI="${VIGIE_DELAI:-10}"
-AGENT="vigie/0.1 (projet de formation DevOps)"
+AGENT="vigie/0.1 (+https://github.com/LamaJoker/vigie; projet de formation DevOps)"
 
 erreur() {
   echo "vigie: $*" >&2

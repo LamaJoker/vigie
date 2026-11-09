@@ -4,7 +4,7 @@
 setup_file() {
   export PORT=$((20000 + RANDOM % 20000))
   # 3>&- : le serveur ne doit pas garder ouvert le canal interne de bats
-  python3 "$BATS_TEST_DIRNAME/serveur_test.py" "$PORT" 2>/dev/null 3>&- &
+  python3 "$BATS_TEST_DIRNAME/serveur_http.py" "$PORT" 2>/dev/null 3>&- &
   echo $! >"$BATS_FILE_TMPDIR/serveur.pid"
 
   # Attend que le serveur soit prêt (5 secondes au plus).
@@ -23,7 +23,7 @@ teardown_file() {
 setup() {
   export VIGIE_LOG="$BATS_TEST_TMPDIR/sondes.log"
   export VIGIE_DELAI=2
-  SONDE="$BATS_TEST_DIRNAME/../sonde/vigie.sh"
+  SONDE="$BATS_TEST_DIRNAME/../../sonde/vigie.sh"
   SITES="$BATS_TEST_TMPDIR/sites.txt"
   BASE="http://127.0.0.1:$PORT"
 }

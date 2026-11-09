@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/vigie/__init__.py
+src/vigie/__main__.py
+src/vigie/cli.py
+src/vigie/config.py
+src/vigie/journal.py
+src/vigie/sonde.py
+src/vigie.egg-info/PKG-INFO
+src/vigie.egg-info/SOURCES.txt
+src/vigie.egg-info/dependency_links.txt
+src/vigie.egg-info/entry_points.txt
+src/vigie.egg-info/requires.txt
+src/vigie.egg-info/top_level.txt

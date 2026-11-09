@@ -1,0 +1,25 @@
+# Configuration de la sonde Vigie.
+
+[sonde]
+delai = 10       # secondes accordées à chaque site, redirections comprises
+paralleles = 10  # nombre de sites testés en même temps
+
+[[sites]]
+nom = "Wikipédia"
+url = "https://www.wikipedia.org"
+
+[[sites]]
+nom = "GitHub"
+url = "https://github.com"
+
+[[sites]]
+nom = "Debian"
+url = "https://www.debian.org"
+
+[[sites]]
+nom = "data.gouv.fr"
+url = "https://www.data.gouv.fr"
+
+[[sites]]
+nom = "Example"
+url = "https://example.com"

@@ -25,9 +25,13 @@ Compte rendu : [docs/semaines/semaine-02.md](docs/semaines/semaine-02.md)
 
 ### Semaine 3 : Python (Vigie v1)
 
-- [ ] Sonde réécrite en Python, dans un environnement virtuel
-- [ ] Liste des sites dans un fichier de configuration
-- [ ] Premiers tests automatisés avec pytest
+Compte rendu : [docs/semaines/semaine-03.md](docs/semaines/semaine-03.md)
+
+- [x] Sonde réécrite en Python, dans un environnement virtuel
+- [x] Liste des sites dans un fichier de configuration (TOML)
+- [x] Premiers tests automatisés avec pytest (51 tests, 99 % du code couvert)
+- [x] Sites testés en parallèle, résultats au format JSON Lines
+- [x] Makefile et contrôle du style avec ruff
 
 ### Semaine 4 : API et base de données
 

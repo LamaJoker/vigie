@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vigie"
+version = "0.2.0"
+description = "Service de surveillance de sites web (projet de formation DevOps)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "ruff>=0.8",
+]
+
+[project.scripts]
+vigie = "vigie.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "--cov=vigie --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# E/W : style PEP 8, F : erreurs, I : ordre des imports, B : pièges courants,
+# UP : syntaxe moderne, SIM : simplifications
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
