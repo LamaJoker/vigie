@@ -1,0 +1,3 @@
+# Fins de ligne Unix pour tous les fichiers texte :
+# un script Bash enregistré avec des fins de ligne Windows ne s'exécute pas.
+* text=auto eol=lf
