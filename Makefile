@@ -16,7 +16,7 @@ export VIGIE_DISCORD_WEBHOOK
 
 .PHONY: aide installer tests tests-python tests-bash lint format sonder serveur \
 	db-demarrer db-arreter tester-alerte docker-secrets docker-demarrer docker-arreter \
-	docker-etat docker-journaux lint-docker tests-docker
+	docker-etat docker-journaux lint-docker tests-docker lint-ci ci
 
 aide:
 	@echo "make installer     crée l'environnement virtuel et installe Vigie"
@@ -36,6 +36,8 @@ aide:
 	@echo "make docker-arreter   arrête les conteneurs (les données sont gardées)"
 	@echo "make lint-docker      vérifie le Dockerfile (hadolint) et compose.yaml"
 	@echo "make tests-docker     essai de bout en bout de la pile, dans un projet jetable"
+	@echo ""
+	@echo "make ci               toutes les vérifications de l'intégration continue, en local"
 
 installer: $(VENV)/.installe
 
@@ -115,3 +117,11 @@ lint-docker:
 
 tests-docker:
 	tests/docker/essai-pile.sh
+
+# Vérifie la syntaxe et les pièges courants des workflows GitHub Actions.
+lint-ci:
+	docker run --rm -v "$(CURDIR):/depot:ro" -w /depot rhysd/actionlint:latest -color
+
+# Les mêmes vérifications que GitHub Actions, sur le poste, avant de pousser.
+ci: lint lint-docker lint-ci tests tests-docker
+	@echo "Toutes les vérifications de l'intégration continue sont passées."
