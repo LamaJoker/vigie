@@ -1,0 +1,157 @@
+# Intégration continue de Vigie.
+#
+# À chaque pull request et à chaque modification de main :
+#   1. qualite      : style et analyse du code (ruff, ShellCheck, hadolint, compose)
+#   2. tests-python : tests pytest sur plusieurs versions de Python, avec PostgreSQL
+#   3. tests-bash   : tests bats de la version Bash
+#   4. docker       : construit l'image et lance l'essai de bout en bout de la pile
+#   5. publication  : sur main seulement, publie l'image sur GitHub Container Registry
+#
+# Les mêmes vérifications se lancent en local avec « make ci ».
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Droits minimaux par défaut : lecture du dépôt seulement.
+permissions:
+  contents: read
+
+# Sur une pull request, une nouvelle modification annule la vérification encore en cours.
+# Sur main, on va toujours au bout (une publication ne doit pas être coupée).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  qualite:
+    name: Style et analyse
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Installer les outils
+        run: pip install -e ".[dev]"
+      - name: ruff (style et erreurs Python)
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
+      - name: ShellCheck (scripts Bash)
+        run: shellcheck sonde/*.sh tests/docker/*.sh
+      - name: hadolint (Dockerfile)
+        run: docker run --rm -i hadolint/hadolint:latest-debian < Dockerfile
+      - name: Validation de compose.yaml
+        run: VIGIE_MOT_DE_PASSE_BASE=verification docker compose config --quiet
+
+  tests-python:
+    name: Tests Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # La plus ancienne version acceptée (pyproject.toml) et la plus récente.
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Installer Vigie et les outils de test
+        run: pip install -e ".[dev]"
+      # Les machines GitHub ont les programmes PostgreSQL : les tests lancent
+      # leur propre base jetable avec, comme sur le poste de développement.
+      - name: pytest
+        run: pytest --cov-report=term-missing --cov-report=xml --cov-fail-under=95
+      - name: Résumé de la couverture
+        if: always()
+        env:
+          VERSION: ${{ matrix.python }}
+        run: |
+          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          import os
+          import xml.etree.ElementTree as ET
+          taux = float(ET.parse("coverage.xml").getroot().get("line-rate")) * 100
+          print(f"### Couverture du code (Python {os.environ['VERSION']}) : {taux:.1f} %")
+          EOF
+
+  tests-bash:
+    name: Tests Bash
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Installer bats
+        run: sudo apt-get update -q && sudo apt-get install -y -q bats
+      - name: bats
+        run: bats tests/bash/
+
+  docker:
+    name: Image et essai de bout en bout
+    needs: [qualite, tests-python, tests-bash]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Construire l'image et essayer toute la pile
+        run: tests/docker/essai-pile.sh
+      - name: Garder l'image pour la publication
+        run: docker save vigie:local | gzip > image.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image
+          path: image.tar.gz
+          retention-days: 1
+
+  publication:
+    name: Publication sur GitHub Container Registry
+    # Seulement pour main : une pull request ne publie jamais rien.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [docker]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write  # droit d'écrire dans le registre d'images, pour ce job seulement
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: image
+      - name: Charger l'image testée
+        run: gunzip -c image.tar.gz | docker load
+      - name: Se connecter au registre
+        # GITHUB_TOKEN est un jeton temporaire fourni par GitHub pour ce seul passage :
+        # aucun secret personnel n'est stocké. Les valeurs passent par des variables
+        # d'environnement, jamais collées dans le script (risque d'injection).
+        env:
+          JETON: ${{ secrets.GITHUB_TOKEN }}
+          ACTEUR: ${{ github.actor }}
+        run: echo "$JETON" | docker login ghcr.io --username "$ACTEUR" --password-stdin
+      - name: Étiqueter et publier
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          court="${GITHUB_SHA::7}"
+          for etiquette in "$court" latest; do
+            docker tag vigie:local "$image:$etiquette"
+            docker push "$image:$etiquette"
+          done
+          {
+            echo "### Image publiée"
+            echo '```'
+            echo "docker pull $image:$court"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

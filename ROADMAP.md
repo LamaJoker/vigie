@@ -65,8 +65,12 @@ Compte rendu : [docs/semaines/semaine-06.md](docs/semaines/semaine-06.md)
 
 ### Semaine 7 : intégration continue
 
-- [ ] GitHub Actions : vérification du style et tests à chaque push
-- [ ] Construction de l'image et publication sur GitHub Container Registry
+Compte rendu : [docs/semaines/semaine-07.md](docs/semaines/semaine-07.md)
+
+- [x] GitHub Actions : vérification du style et tests à chaque push
+- [x] Construction de l'image et publication sur GitHub Container Registry
+- [x] Tests sur deux versions de Python, couverture minimale exigée
+- [x] Mêmes vérifications en local avec `make ci`
 
 ### Semaine 8 : sécurité de la chaîne
 

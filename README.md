@@ -1,8 +1,10 @@
 # Vigie
 
+[![CI](https://github.com/LamaJoker/vigie/actions/workflows/ci.yml/badge.svg)](https://github.com/LamaJoker/vigie/actions/workflows/ci.yml)
+
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 6 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, le tout en conteneurs Docker.
+**Statut : en construction (semaine 7 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, en conteneurs Docker, vérifiés et publiés par GitHub Actions.
 
 ![Page de statut de Vigie](docs/images/page-statut.jpg)
 
@@ -135,7 +137,22 @@ make tests          # 138 tests Python (pytest) et 17 tests Bash (bats)
 make lint           # style et qualité : ruff pour Python, ShellCheck pour Bash
 make lint-docker    # Dockerfile (hadolint) et compose.yaml
 make tests-docker   # essai de bout en bout de la pile, dans un projet jetable
+make ci             # tout ce que vérifie l'intégration continue, en local
 ```
+
+### Intégration continue
+
+À chaque pull request et à chaque modification de `main`, [GitHub Actions](https://github.com/LamaJoker/vigie/actions) lance automatiquement les mêmes vérifications ([.github/workflows/ci.yml](.github/workflows/ci.yml)) :
+
+| Étape | Contenu |
+|---|---|
+| Style et analyse | ruff, ShellCheck, hadolint, validation de `compose.yaml` |
+| Tests Python | pytest avec PostgreSQL, sur Python 3.12 et 3.14, couverture d'au moins 95 % exigée |
+| Tests Bash | bats |
+| Image et essai | construction de l'image et essai de bout en bout de toute la pile |
+| Publication | sur `main` seulement : l'image testée est publiée sur GitHub Container Registry |
+
+L'image publiée se récupère avec `docker pull ghcr.io/lamajoker/vigie:latest`.
 
 Les tests de la base lancent leur propre PostgreSQL jetable, détruit à la fin. Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
 
@@ -180,7 +197,7 @@ vigie/
 │   ├── python/       tests pytest
 │   ├── bash/         tests bats et serveur HTTP de test
 │   └── docker/       essai de bout en bout de la pile Docker
-├── .github/          modèle de pull request
+├── .github/          intégration continue (workflows/ci.yml) et modèle de pull request
 └── docs/
     ├── semaines/     un compte rendu par semaine
     └── images/       captures d'écran
