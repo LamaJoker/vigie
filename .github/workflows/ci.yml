@@ -50,6 +50,8 @@ jobs:
           ruff format --check .
       - name: ShellCheck (scripts Bash)
         run: shellcheck sonde/*.sh tests/docker/*.sh
+      - name: Liens de la documentation
+        run: python scripts/verifier_liens.py
       - name: hadolint (Dockerfile)
         run: docker run --rm -i hadolint/hadolint:latest-debian < Dockerfile
       - name: Validation de compose.yaml

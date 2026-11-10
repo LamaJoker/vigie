@@ -1,6 +1,6 @@
-# Semaine 4 : API et base de données
+# Étape 4 : API et base de données
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request
 
 ## Objectif
@@ -40,7 +40,7 @@ Installer PostgreSQL crée d'habitude une base qui démarre avec la machine et �
 
 Choix et raisons :
 
-- **`/sante`** sert aux outils qui surveillent l'application elle-même : Docker (semaine 6) et Kubernetes (semaine 11) l'interrogeront pour savoir si le conteneur va bien.
+- **`/sante`** sert aux outils qui surveillent l'application elle-même : Docker (étape 6) et Kubernetes (étape 11) l'interrogeront pour savoir si le conteneur va bien.
 - **Base injoignable = réponse 503** (« service indisponible ») avec un message clair, au lieu d'une erreur 500 incompréhensible.
 - **La page échappe tout le texte affiché** (moteur de modèles Jinja2) : un nom de site piégé avec du code HTML ne peut pas s'exécuter dans le navigateur. Un test le vérifie.
 - **La page s'adapte au thème clair ou sombre** et s'actualise toute seule chaque minute.
@@ -66,7 +66,7 @@ Un réglage isole aussi les tests des variables `VIGIE_*` de la machine : un tes
 - **Le schéma est créé, mais pas encore versionné** : pour le faire évoluer proprement, il faudra un outil de migrations (Alembic, par exemple).
 - **La table grossit sans fin** : il faudra purger les vieilles mesures, ou les résumer.
 - **Avertissement de dépréciation** dans les tests : la bibliothèque Starlette annonce un changement de client HTTP pour ses outils de test. Rien ne casse aujourd'hui, mais c'est à suivre lors d'une mise à jour.
-- **La sonde n'est pas encore lancée automatiquement en continu** : ce sera le rôle des conteneurs (semaine 6).
+- **La sonde n'est pas encore lancée automatiquement en continu** : ce sera le rôle des conteneurs (étape 6).
 
 ## Comment vérifier
 
@@ -81,7 +81,7 @@ make serveur        # puis ouvrir http://localhost:8000 dans le navigateur
 make db-arreter     # après Ctrl+C sur le serveur
 ```
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -100,6 +100,6 @@ make db-arreter     # après Ctrl+C sur le serveur
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 4 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 4 | |
 
 **Total :** h

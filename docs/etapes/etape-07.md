@@ -1,6 +1,6 @@
-# Semaine 7 : intégration continue
+# Étape 7 : intégration continue
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request
 
 ## Objectif
@@ -59,9 +59,9 @@ GitHub refuse qu'un programme ajoute ou modifie un workflow sans le droit spéci
 
 ## Limites connues
 
-- **Les actions GitHub utilisées sont désignées par leur version majeure** (`actions/checkout@v5`). Une version modifiée en douce serait utilisée sans prévenir. On les fixera par leur empreinte, avec Dependabot pour les mettre à jour (semaine 8).
-- **La branche `main` n'est pas encore protégée** : on peut toujours fusionner une pull request dont la vérification a échoué (semaine 8).
-- **L'image publiée n'est pas encore analysée** pour ses failles connues (Trivy, semaine 8).
+- **Les actions GitHub utilisées sont désignées par leur version majeure** (`actions/checkout@v5`). Une version modifiée en douce serait utilisée sans prévenir. On les fixera par leur empreinte, avec Dependabot pour les mettre à jour (étape 8).
+- **La branche `main` n'est pas encore protégée** : on peut toujours fusionner une pull request dont la vérification a échoué (étape 8).
+- **L'image publiée n'est pas encore analysée** pour ses failles connues (Trivy, étape 8).
 
 ## Comment vérifier
 
@@ -69,7 +69,7 @@ GitHub refuse qu'un programme ajoute ou modifie un workflow sans le droit spéci
 - Dans la pull request : les coches vertes ou les croix rouges en bas de page.
 - En local : `make ci`.
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -87,6 +87,6 @@ GitHub refuse qu'un programme ajoute ou modifie un workflow sans le droit spéci
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 7 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 7 | |
 
 **Total :** h

@@ -1,6 +1,6 @@
-# Semaine 2 : Linux et Bash (Vigie v0)
+# Étape 2 : Linux et Bash (Vigie v0)
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request ; tâche cron pas encore installée sur le poste
 
 ## Objectif
@@ -63,12 +63,12 @@ Le premier essai de l'installeur cron lisait la crontab et la réécrivait **dan
 2026-11-09T15:00:07+01:00 UP 200 73 https://example.com
 ```
 
-## Limites connues (traitées dans les semaines suivantes)
+## Limites connues (traitées dans les étapes suivantes)
 
-- **Sous WSL, Ubuntu s'arrête quand plus aucune fenêtre ne l'utilise** : cron ne tourne alors plus. Sur un vrai serveur (semaines 9 et 10), la sonde tournera en continu.
-- **Les sites sont testés l'un après l'autre** : avec beaucoup de sites, un passage peut devenir long. La version Python (semaine 3) les testera en parallèle.
-- **Le log grossit sans fin** : il faudra une rotation ou une base de données (semaine 4).
-- **Aucune alerte** : une panne est notée mais personne n'est prévenu (semaine 5).
+- **Sous WSL, Ubuntu s'arrête quand plus aucune fenêtre ne l'utilise** : cron ne tourne alors plus. Sur un vrai serveur (étapes 9 et 10), la sonde tournera en continu.
+- **Les sites sont testés l'un après l'autre** : avec beaucoup de sites, un passage peut devenir long. La version Python (étape 3) les testera en parallèle.
+- **Le log grossit sans fin** : il faudra une rotation ou une base de données (étape 4).
+- **Aucune alerte** : une panne est notée mais personne n'est prévenu (étape 5).
 
 ## Comment vérifier
 
@@ -76,12 +76,12 @@ Le premier essai de l'installeur cron lisait la crontab et la réécrivait **dan
 cd ~/vigie
 ./sonde/vigie.sh; echo "code de sortie : $?"
 shellcheck sonde/*.sh
-bats tests/bash/   # les tests Bash ont été rangés dans tests/bash/ en semaine 3
+bats tests/bash/   # les tests Bash ont été rangés dans tests/bash/ à l'étape 3
 ```
 
 Pour activer le lancement automatique : `./sonde/installer-cron.sh`, puis `crontab -l` pour voir la tâche.
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -98,6 +98,6 @@ Pour activer le lancement automatique : `./sonde/installer-cron.sh`, puis `cront
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 2 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 2 | |
 
 **Total :** h

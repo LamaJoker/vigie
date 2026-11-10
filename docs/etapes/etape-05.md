@@ -1,6 +1,6 @@
-# Semaine 5 : alertes
+# Étape 5 : alertes
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request
 
 ## Objectif
@@ -87,7 +87,7 @@ make sonder
 make db-arreter
 ```
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -104,6 +104,6 @@ make db-arreter
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 5 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 5 | |
 
 **Total :** h

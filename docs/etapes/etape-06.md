@@ -1,6 +1,6 @@
-# Semaine 6 : Docker
+# Étape 6 : Docker
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request
 
 ## Objectif
@@ -19,7 +19,7 @@ Emballer Vigie dans des conteneurs. Une seule commande doit lancer la base, l'AP
 
 - **Construction en deux étapes (« multi-stage »)** : la première installe Vigie et ses dépendances, la seconde ne recopie que le résultat. L'image finale ne contient ni outils de construction, ni tests, ni documentation : **256 Mo**, dont l'essentiel est Python lui-même.
 - **Cache des couches** : les fichiers qui changent le moins sont copiés en premier, pour que Docker réutilise les étapes déjà construites.
-- **Utilisateur dédié sans droits root, avec un numéro fixe (UID 10001)**. Kubernetes (semaine 11) a besoin d'un numéro pour vérifier qu'un conteneur ne tourne pas en root. hadolint, l'outil d'analyse des Dockerfile, l'a d'ailleurs signalé.
+- **Utilisateur dédié sans droits root, avec un numéro fixe (UID 10001)**. Kubernetes (étape 11) a besoin d'un numéro pour vérifier qu'un conteneur ne tourne pas en root. hadolint, l'outil d'analyse des Dockerfile, l'a d'ailleurs signalé.
 - **`.dockerignore`** : les secrets (`.env`), l'environnement virtuel, la base de développement et l'historique Git n'entrent jamais dans l'image.
 - **Forme « exec » de `ENTRYPOINT`** : Vigie reçoit directement le signal d'arrêt.
 
@@ -35,7 +35,7 @@ Emballer Vigie dans des conteneurs. Une seule commande doit lancer la base, l'AP
 Choix et raisons :
 
 - **Ordre de démarrage maîtrisé** : `init-db` attend que la base soit *saine*, l'API et la sonde attendent qu'`init-db` ait *réussi*. Un simple « démarré » ne suffit pas : PostgreSQL met quelques secondes à accepter les connexions.
-- **Contrôles de santé** : `pg_isready` pour la base, `/sante` (créé en semaine 4) pour l'API. `make docker-etat` affiche `healthy` ou `unhealthy`.
+- **Contrôles de santé** : `pg_isready` pour la base, `/sante` (créé à l'étape 4) pour l'API. `make docker-etat` affiche `healthy` ou `unhealthy`.
 - **Redémarrage automatique** (`restart: unless-stopped`) si un conteneur plante.
 - **Moindre privilège** pour les conteneurs Vigie : système de fichiers **en lecture seule** (seuls deux petits dossiers de travail en mémoire sont inscriptibles), **aucune capacité Linux** (`cap_drop: ALL`), et interdiction de gagner des droits (`no-new-privileges`).
 - **Secrets hors du dépôt** : le mot de passe de la base est tiré au hasard par `make docker-demarrer` et rangé dans `.env`, avec les droits `600`. Le webhook Discord suit le même chemin.
@@ -76,8 +76,8 @@ S'y ajoutent `make lint-docker` (hadolint et validation de `compose.yaml`) et **
 ## Limites connues
 
 - **La pile complète n'a pas été laissée en marche sur le poste.** Avec le redémarrage automatique, elle relancerait ses conteneurs à chaque réveil de Docker. Pour la lancer : `make docker-demarrer`.
-- **Les images de base ne sont pas figées** (`python:3.14-slim`, `postgres:18-alpine`) : deux constructions à des dates différentes peuvent donner des images différentes. On les fixera par leur empreinte (*digest*) en semaine 8, avec l'analyse de sécurité.
-- **Le mot de passe passe par une variable d'environnement**, visible avec `docker inspect`. Kubernetes (semaine 11) apportera de vrais objets « Secret ».
+- **Les images de base ne sont pas figées** (`python:3.14-slim`, `postgres:18-alpine`) : deux constructions à des dates différentes peuvent donner des images différentes. On les fixera par leur empreinte (*digest*) à l'étape 8, avec l'analyse de sécurité.
+- **Le mot de passe passe par une variable d'environnement**, visible avec `docker inspect`. Kubernetes (étape 11) apportera de vrais objets « Secret ».
 - **Sous WSL, les conteneurs s'arrêtent avec Ubuntu.** Sur un vrai serveur, ils tourneront en continu.
 
 ## Comment vérifier
@@ -91,7 +91,7 @@ make docker-demarrer  # puis http://localhost:8000
 make docker-arreter
 ```
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -110,6 +110,6 @@ make docker-arreter
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 6 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 6 | |
 
 **Total :** h
