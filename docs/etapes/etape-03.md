@@ -1,6 +1,6 @@
-# Semaine 3 : Python (Vigie v1)
+# Étape 3 : Python (Vigie v1)
 
-**Date :** 9 novembre 2026 (étape avancée à la demande du superviseur)
+**Date :** 9 novembre 2026
 **Statut :** livrée en pull request
 
 ## Objectif
@@ -14,7 +14,7 @@ Réécrire la sonde en Python, avec une vraie configuration et des tests, pour p
 - **`pyproject.toml`** décrit le projet : nom, version, dépendances, et la commande `vigie` qu'il installe. C'est le format standard actuel d'un projet Python.
 - **Une seule dépendance d'exécution : `httpx`**, un client HTTP qui sait faire plusieurs requêtes en même temps. Les outils de développement (pytest, pytest-cov, ruff) sont séparés dans `[dev]` : ils ne seront pas installés en production.
 - **Environnement virtuel `.venv`** : les bibliothèques du projet sont isolées de celles du système. Deux projets peuvent ainsi utiliser des versions différentes sans conflit.
-- **`Makefile`** : `make installer`, `make tests`, `make lint`, `make sonder`. Les mêmes commandes serviront dans l'intégration continue (semaine 7).
+- **`Makefile`** : `make installer`, `make tests`, `make lint`, `make sonder`. Les mêmes commandes serviront dans l'intégration continue (étape 7).
 
 ### Le code (`src/vigie/`)
 
@@ -30,8 +30,8 @@ Choix et raisons :
 - **Configuration en TOML** (`config/vigie.toml`) : lisible par un humain, et Python sait le lire sans dépendance. Chaque erreur (adresse invalide, adresse en double, délai négatif…) est refusée avec un message clair **avant** de lancer la moindre requête.
 - **Tests en parallèle (`asyncio`)** : pendant qu'un site met du temps à répondre, la sonde en interroge d'autres. Une limite (`paralleles`) évite d'ouvrir trop de connexions d'un coup. Avec 5 sites, un passage dure le temps du site le plus lent (environ 0,25 s) au lieu de la somme de tous (environ 0,8 s en Bash).
 - **Délai total par site** : comme `curl --max-time`, il compte les redirections. Un site ne bloque jamais la sonde plus de `delai` secondes.
-- **Résultats en JSON Lines** (`~/.local/state/vigie/sondes.jsonl`) : un objet JSON par ligne. Le format reste lisible, se filtre avec `jq` et sera compris tel quel par Loki (semaine 13).
-- **Mêmes conventions que la version Bash** : codes de sortie 0, 1 et 2, verrou contre les exécutions simultanées, variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG`. Ces variables permettront de configurer le conteneur Docker sans modifier le code (semaine 6).
+- **Résultats en JSON Lines** (`~/.local/state/vigie/sondes.jsonl`) : un objet JSON par ligne. Le format reste lisible, se filtre avec `jq` et sera compris tel quel par Loki (étape 13).
+- **Mêmes conventions que la version Bash** : codes de sortie 0, 1 et 2, verrou contre les exécutions simultanées, variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG`. Ces variables permettront de configurer le conteneur Docker sans modifier le code (étape 6).
 
 ### Les tests (`tests/python/`)
 
@@ -41,7 +41,7 @@ Choix et raisons :
 - **sonde** (10 tests) avec un **faux réseau** (`httpx.MockTransport`) : on décide de la réponse de chaque « site » sans Internet. On vérifie les codes 200 et 503, les redirections, la connexion refusée, le délai dépassé, le parallélisme réel, la limite de requêtes simultanées et l'ordre des résultats ;
 - **commande complète** (11 tests) contre un **vrai petit serveur HTTP local**, lancé par les tests eux-mêmes.
 
-Les 17 tests Bash de la semaine 2 ont été rangés dans `tests/bash/`.
+Les 17 tests Bash de l'étape 2 ont été rangés dans `tests/bash/`.
 
 ### La qualité
 
@@ -73,9 +73,9 @@ UP   200     95 ms  Example (https://example.com)
 
 ## Limites connues
 
-- **Le fichier de résultats grossit sans fin** : la base de données PostgreSQL de la semaine 4 le remplacera.
-- **Pas encore d'interface** : les résultats se lisent dans le terminal ou dans le fichier. L'API et la page de statut arrivent en semaine 4.
-- **La tâche cron lance toujours la version Bash** : la version Python sera planifiée quand elle tournera dans un conteneur (semaine 6).
+- **Le fichier de résultats grossit sans fin** : la base de données PostgreSQL de l'étape 4 le remplacera.
+- **Pas encore d'interface** : les résultats se lisent dans le terminal ou dans le fichier. L'API et la page de statut arrivent à l'étape 4.
+- **La tâche cron lance toujours la version Bash** : la version Python sera planifiée quand elle tournera dans un conteneur (étape 6).
 
 ## Comment vérifier
 
@@ -87,7 +87,7 @@ make lint      # ruff et ShellCheck
 make sonder    # essai réel
 ```
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|
@@ -106,6 +106,6 @@ make sonder    # essai réel
 
 | Jour | Activité | Durée |
 |---|---|---|
-| Lun. 9/11 | Relecture de la pull request de la semaine 3 | |
+| Lun. 9/11 | Relecture de la pull request de l'étape 3 | |
 
 **Total :** h

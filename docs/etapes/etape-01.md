@@ -1,6 +1,6 @@
-# Semaine 1 : poste de travail et Git
+# Étape 1 : poste de travail et Git
 
-**Période :** du 9 au 15 novembre 2026
+**Date :** 9 novembre 2026
 **Statut :** en cours
 
 ## Objectif
@@ -21,7 +21,7 @@ Disposer d'un poste de travail DevOps complet sous Windows : un vrai Linux, un �
 - **Accès à GitHub sans mot de passe stocké dans Ubuntu.** Git demande les identifiants au GitHub CLI de Windows, déjà connecté (mécanisme du *credential helper*).
 - **Dépôt public créé**, premier commit publié.
 - **`.gitattributes`** impose les fins de ligne Unix (LF). Un script Bash enregistré avec des fins de ligne Windows (CRLF) refuse de s'exécuter : c'est une erreur classique quand on travaille entre Windows et Linux.
-- **`.gitignore`** exclut déjà les secrets (`.env`, clés) et les fichiers générés, en prévision des semaines suivantes.
+- **`.gitignore`** exclut déjà les secrets (`.env`, clés) et les fichiers générés, en prévision des étapes suivantes.
 
 ### Organisation
 
@@ -47,7 +47,7 @@ Disposer d'un poste de travail DevOps complet sous Windows : un vrai Linux, un �
 - Dans Ubuntu : `cd ~/vigie`, puis `git log --oneline` (historique) et `git remote -v` (lien avec GitHub).
 - Dans PowerShell : `wsl -l -v` affiche Ubuntu en version 2.
 
-## Vocabulaire de la semaine
+## Vocabulaire de l'étape
 
 | Terme | Sens |
 |---|---|

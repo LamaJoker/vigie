@@ -4,7 +4,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (semaine 7 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, en conteneurs Docker, vérifiés et publiés par GitHub Actions.
+**Statut : en construction (étape 7 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, en conteneurs Docker, vérifiés et publiés par GitHub Actions.
 
 ![Page de statut de Vigie](docs/images/page-statut.jpg)
 
@@ -24,16 +24,19 @@ Les commits écrits par l'assistant portent la mention `Co-Authored-By: Claude`.
 
 ## Suivre l'évolution
 
-- La [feuille de route](ROADMAP.md) liste les 14 étapes et ce qui est terminé.
-- Un [compte rendu par semaine](docs/semaines/) explique ce qui a été fait, pourquoi, comment le vérifier, et le temps passé.
+- La [feuille de route](ROADMAP.md) liste les 14 étapes, découpées en lots, et ce qui est terminé.
+- Chaque lot à venir a son [ticket](https://github.com/LamaJoker/vigie/issues), rangé dans le [jalon](https://github.com/LamaJoker/vigie/milestones) de son étape.
+- Un [compte rendu par étape](docs/etapes/) explique ce qui a été fait, pourquoi, comment le vérifier, et le temps passé.
 - Les [pull requests](https://github.com/LamaJoker/vigie/pulls?q=is%3Apr) montrent chaque changement et sa validation.
+- Le [journal des versions](CHANGELOG.md) résume ce qui change d'une version à l'autre.
+- Les [décisions d'architecture](docs/decisions/) expliquent les choix structurants, et le [schéma d'architecture](docs/architecture.md) montre l'ensemble.
 
-## Ce que Vigie fera
+## Ce que fait Vigie
 
-- Tester une liste de sites à intervalle régulier (code HTTP, temps de réponse).
-- Enregistrer les résultats dans une base de données.
-- Afficher une page de statut : sites en ligne, incidents en cours, historique.
-- Envoyer une alerte (Discord, e-mail) quand un site ne répond plus, puis quand il revient.
+- Elle teste une liste de sites à intervalle régulier (code HTTP, temps de réponse).
+- Elle enregistre les résultats dans une base de données PostgreSQL.
+- Elle affiche une page de statut : sites en ligne, disponibilité sur 24 heures, incidents en cours et passés.
+- Elle envoie une alerte sur Discord quand un site ne répond plus, puis quand il revient.
 
 ## Démarrage rapide avec Docker
 
@@ -146,7 +149,7 @@ make ci             # tout ce que vérifie l'intégration continue, en local
 
 | Étape | Contenu |
 |---|---|
-| Style et analyse | ruff, ShellCheck, hadolint, validation de `compose.yaml` |
+| Style et analyse | ruff, ShellCheck, hadolint, validation de `compose.yaml`, liens de la documentation |
 | Tests Python | pytest avec PostgreSQL, sur Python 3.12 et 3.14, couverture d'au moins 95 % exigée |
 | Tests Bash | bats |
 | Image et essai | construction de l'image et essai de bout en bout de toute la pile |
@@ -156,7 +159,7 @@ L'image publiée se récupère avec `docker pull ghcr.io/lamajoker/vigie:latest`
 
 Les tests de la base lancent leur propre PostgreSQL jetable, détruit à la fin. Les tests Bash demandent `bats` et ShellCheck : `sudo apt install bats shellcheck`.
 
-### Version Bash (semaine 2)
+### Version Bash (étape 2)
 
 La première version, un script Bash, reste disponible :
 
@@ -183,7 +186,9 @@ La première version, un script Bash, reste disponible :
 ```
 vigie/
 ├── README.md         ce fichier
-├── ROADMAP.md        feuille de route sur 14 semaines
+├── ROADMAP.md        feuille de route en 14 étapes
+├── CHANGELOG.md      journal des versions
+├── LICENSE           licence MIT
 ├── Makefile          raccourcis : installer, tests, lint, sonder, docker-demarrer...
 ├── Dockerfile        image de Vigie, en deux étapes, sans root
 ├── compose.yaml      la pile complète : base, API, sonde
@@ -193,13 +198,16 @@ vigie/
 ├── config/           configuration de la sonde (sites, délais)
 ├── src/vigie/        le code Python : sonde, base de données, alertes, API, page de statut
 ├── sonde/            la version Bash et son installation cron
+├── scripts/          outils du dépôt (vérification des liens de la documentation)
 ├── tests/
 │   ├── python/       tests pytest
 │   ├── bash/         tests bats et serveur HTTP de test
 │   └── docker/       essai de bout en bout de la pile Docker
 ├── .github/          intégration continue (workflows/ci.yml) et modèle de pull request
 └── docs/
-    ├── semaines/     un compte rendu par semaine
+    ├── etapes/       un compte rendu par étape, et le modèle des comptes rendus
+    ├── decisions/    décisions d'architecture (contexte, choix, conséquences)
+    ├── architecture.md  schémas de l'architecture actuelle et cible
     └── images/       captures d'écran
 ```
 
@@ -218,4 +226,10 @@ Les messages de commit suivent le format [Conventional Commits](https://www.conv
 | `ci:` | intégration continue |
 | `chore:` | maintenance (dépendances, configuration) |
 
-Exemple : `docs: compte rendu de la semaine 1`
+Exemple : `docs: compte rendu de l'étape 1`
+
+Une pull request qui réalise un lot le ferme avec `Closes #N` dans sa description.
+
+## Licence
+
+[MIT](LICENSE) : le code peut être réutilisé librement, en citant son origine.

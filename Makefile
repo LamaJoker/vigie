@@ -59,6 +59,7 @@ lint: installer
 	$(BIN)/ruff check .
 	$(BIN)/ruff format --check .
 	shellcheck sonde/*.sh tests/docker/*.sh
+	$(BIN)/python scripts/verifier_liens.py
 
 format: installer
 	$(BIN)/ruff format .

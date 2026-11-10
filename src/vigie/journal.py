@@ -1,7 +1,7 @@
 """Enregistrement des résultats, au format JSON Lines (un objet JSON par ligne).
 
 Ce format se lit facilement avec des outils comme jq, et les outils de
-centralisation des logs (Loki, semaine 13) le comprennent directement.
+centralisation des logs (Loki, étape 13) le comprennent directement.
 """
 
 import json
