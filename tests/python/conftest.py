@@ -19,6 +19,7 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
     GET  /lent           attend 3 s avant de répondre 200
     GET  /redirection    renvoie vers /200
     GET  /bascule        répond Gestionnaire.code_bascule (un site qu'on fait tomber)
+    GET  /gros           annonce 50 Mo et les envoie au compte-gouttes (plus de 40 s)
     POST /webhook        faux Discord : garde le message reçu et répond 204
     POST /webhook-500    faux Discord en panne : répond ce code
     """
@@ -40,9 +41,24 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def envoyer_gros_corps(self) -> None:
+        taille, morceau = 50 * 1024 * 1024, b"x" * 65536
+        try:
+            self.send_response(200)
+            self.send_header("Content-Length", str(taille))
+            self.end_headers()
+            for _ in range(taille // len(morceau)):
+                self.wfile.write(morceau)
+                time.sleep(0.05)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # la sonde a fermé la connexion sans lire le corps : c'est ce qu'on veut
+
     def do_GET(self) -> None:
         chemin = self.path.strip("/")
         entetes = {"Content-Length": "0"}
+        if chemin == "gros":
+            self.envoyer_gros_corps()
+            return
         if chemin == "lent":
             time.sleep(3)
             code = 200

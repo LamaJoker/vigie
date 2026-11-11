@@ -2,6 +2,7 @@
 
 from conftest import Gestionnaire
 
+from vigie import base
 from vigie.cli import main
 
 
@@ -12,6 +13,26 @@ def sonder(config, base, tmp_path):
 
 def titres_recus():
     return [message["embeds"][0]["title"] for message in Gestionnaire.recus]
+
+
+def test_retirer_un_site_en_panne_ferme_son_incident_sans_alerte(
+    serveur, webhook, ecrire_config, tmp_path, base_vide, monkeypatch
+):
+    monkeypatch.setenv("VIGIE_DISCORD_WEBHOOK", webhook)
+    en_panne = ecrire_config([f"{serveur}/200", f"{serveur}/503"], echecs_avant_alerte=1)
+    assert sonder(en_panne, base_vide, tmp_path) == 1
+    assert titres_recus() == ["🔴 Panne : site 2"]
+
+    # On retire le site en panne de la configuration : son incident est fermé
+    # (avant le lot 8.1, il restait « en cours » pour toujours), sans faux « rétabli ».
+    sans_lui = ecrire_config([f"{serveur}/200"], echecs_avant_alerte=1)
+    assert sonder(sans_lui, base_vide, tmp_path) == 0
+    assert sonder(sans_lui, base_vide, tmp_path) == 0
+    assert titres_recus() == ["🔴 Panne : site 2"]
+    with base.connecter(base_vide) as conn:
+        [incident] = conn.execute("SELECT fin, motif_fin FROM incidents").fetchall()
+    assert incident["fin"] is not None
+    assert incident["motif_fin"] == "site retiré de la surveillance"
 
 
 def test_une_alerte_a_la_panne_une_au_retour_et_rien_d_autre(
