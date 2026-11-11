@@ -4,11 +4,14 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
+
+import httpx
 
 DELAI_PAR_DEFAUT = 10.0
 PARALLELES_PAR_DEFAUT = 10
 ECHECS_AVANT_ALERTE_PAR_DEFAUT = 2
+LONGUEUR_MAX_URL = 2000  # au-delà, beaucoup de serveurs refusent la requête
 
 
 class ErreurConfiguration(Exception):
@@ -37,6 +40,13 @@ def charger(chemin: Path) -> Configuration:
             donnees = tomllib.load(fichier)
     except FileNotFoundError:
         raise ErreurConfiguration(f"fichier de configuration introuvable : {chemin}") from None
+    except OSError as erreur:
+        # Un dossier à la place du fichier, des droits insuffisants...
+        raise ErreurConfiguration(
+            f"fichier de configuration illisible : {chemin} ({erreur.strerror})"
+        ) from None
+    except UnicodeDecodeError:
+        raise ErreurConfiguration(f"{chemin} n'est pas encodé en UTF-8") from None
     except tomllib.TOMLDecodeError as erreur:
         raise ErreurConfiguration(f"{chemin} n'est pas un fichier TOML valide : {erreur}") from None
     return analyser(donnees)
@@ -78,9 +88,16 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
             raise ErreurConfiguration(f"site n°{numero} : bloc [[sites]] attendu")
 
         url = brut.get("url")
-        if not isinstance(url, str) or not url_valide(url):
+        if not isinstance(url, str):
             raise ErreurConfiguration(
                 f"site n°{numero} : adresse http ou https attendue, reçu {url!r}"
+            )
+        probleme = probleme_url(url)
+        if probleme:
+            apercu = url if len(url) <= 80 else url[:77] + "..."
+            raise ErreurConfiguration(
+                f"site n°{numero} : adresse http ou https valide attendue ({probleme}),"
+                f" reçu {apercu!r}"
             )
         if url in deja_vues:
             raise ErreurConfiguration(f"site n°{numero} : adresse en double : {url}")
@@ -100,9 +117,33 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
     )
 
 
-def url_valide(url: str) -> bool:
-    morceaux = urlparse(url)
-    return morceaux.scheme in ("http", "https") and bool(morceaux.netloc)
+def probleme_url(url: str) -> str | None:
+    """Dit pourquoi une adresse est inutilisable par la sonde, ou None si elle convient.
+
+    Toute adresse acceptée ici doit pouvoir être envoyée au client HTTP sans faire
+    planter la sonde : la vérification a lieu au chargement, pas en plein passage.
+    """
+    if len(url) > LONGUEUR_MAX_URL:
+        return f"adresse trop longue : {len(url)} caractères, {LONGUEUR_MAX_URL} au plus"
+    if any(caractere.isspace() or not caractere.isprintable() for caractere in url):
+        return "elle contient un espace ou un caractère invisible"
+    try:
+        morceaux = urlsplit(url)
+        morceaux.port  # noqa: B018 (lire le port lève ValueError s'il est invalide)
+    except ValueError as erreur:
+        return f"mal formée : {erreur}"
+    if morceaux.scheme not in ("http", "https"):
+        return "elle doit commencer par http:// ou https://"
+    if not morceaux.hostname:
+        return "nom d'hôte manquant"
+    try:
+        httpx.URL(url)
+    except httpx.InvalidURL as erreur:  # pragma: no cover
+        # Aucun cas connu au 10/11/2026 : les adresses qu'httpx refuse contiennent des
+        # caractères invisibles, déjà écartés plus haut. Filet de sécurité si une future
+        # version d'httpx devient plus stricte.
+        return f"refusée par le client HTTP : {erreur}"
+    return None
 
 
 def _est_nombre(valeur: object) -> bool:

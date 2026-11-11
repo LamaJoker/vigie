@@ -31,3 +31,8 @@ CREATE TABLE IF NOT EXISTS incidents (
 -- qu'une panne ne déclenche qu'une seule alerte.
 CREATE UNIQUE INDEX IF NOT EXISTS incidents_un_seul_ouvert ON incidents (url) WHERE fin IS NULL;
 CREATE INDEX IF NOT EXISTS incidents_debut ON incidents (debut DESC);
+
+-- Ajouté au lot 8.1. Pourquoi un incident s'est fermé quand ce n'est pas le retour du
+-- site, par exemple « site retiré de la surveillance ». ADD COLUMN IF NOT EXISTS met
+-- aussi à niveau les bases créées avant (les vraies migrations arrivent au lot 8.3).
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS motif_fin TEXT;

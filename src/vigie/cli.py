@@ -21,6 +21,7 @@ import os
 import signal
 import sys
 import threading
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from vigie.sonde import Resultat, sonder_tous
 
 CONFIG_PAR_DEFAUT = "config/vigie.toml"
 VARIABLE_WEBHOOK = "VIGIE_DISCORD_WEBHOOK"
+ERREURS_IMPREVUES_MAX = 5  # erreurs imprévues de suite avant que « surveiller » s'arrête
 
 
 def log_par_defaut() -> Path:
@@ -160,6 +162,7 @@ def traiter_en_base(url: str, config: Configuration, resultats: list[Resultat]) 
         with base.connecter(url) as conn:
             base.enregistrer(conn, resultats)
             alertes.mettre_a_jour_incidents(conn, resultats, config.echecs_avant_alerte)
+            alertes.fermer_incidents_retires(conn, [site.url for site in config.sites])
             en_attente = alertes.alertes_en_attente(conn)
             if en_attente:
                 notifier(conn, en_attente)
@@ -227,12 +230,28 @@ def commande_surveiller(
     anciens = {sig: signal.signal(sig, demander_arret) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
         numero = 0
+        imprevues_de_suite = 0
         while not arret.is_set():
             numero += 1
             heure = datetime.now().astimezone().strftime("%H:%M:%S")
             print(f"--- passage {numero} à {heure}", flush=True)
-            # Une erreur (base injoignable...) n'arrête pas la boucle : elle peut se résoudre.
-            commande_sonder(config_chemin, log, url_base)
+            # Une erreur prévue (base injoignable...) n'arrête pas la boucle : elle peut se
+            # résoudre. Une erreur imprévue non plus, sauf si elle se répète : on s'arrête
+            # alors en erreur, pour que l'orchestrateur (Docker, Kubernetes) relance la sonde.
+            try:
+                commande_sonder(config_chemin, log, url_base)
+                imprevues_de_suite = 0
+            except Exception:
+                imprevues_de_suite += 1
+                print(
+                    f"vigie: erreur imprévue pendant le passage {numero}"
+                    f" ({imprevues_de_suite}/{ERREURS_IMPREVUES_MAX} de suite)",
+                    file=sys.stderr,
+                )
+                traceback.print_exc()
+                if imprevues_de_suite >= ERREURS_IMPREVUES_MAX:
+                    erreur("trop d'erreurs imprévues de suite, arrêt pour être relancé")
+                    return 1
             sys.stdout.flush()
             if passages and numero >= passages:
                 break

@@ -84,7 +84,7 @@ Compte rendu : [docs/etapes/etape-07.md](docs/etapes/etape-07.md)
 
 Avant de déployer Vigie sur des serveurs et dans un cluster, la rendre fiable, puis sécuriser la chaîne qui la construit.
 
-- [ ] Lot 8.1 : une sonde qui ne tombe pas, même avec une adresse mal écrite ([#9](https://github.com/LamaJoker/vigie/issues/9))
+- [x] Lot 8.1 : une sonde qui ne tombe pas, même avec une adresse mal écrite ([#9](https://github.com/LamaJoker/vigie/issues/9)) ; compte rendu : [docs/etapes/etape-08.md](docs/etapes/etape-08.md)
 - [ ] Lot 8.2 : une page qui ne ment pas : heure locale, données périmées signalées ([#10](https://github.com/LamaJoker/vigie/issues/10))
 - [ ] Lot 8.3 : une base qui dure : migrations, rétention, pool de connexions ([#11](https://github.com/LamaJoker/vigie/issues/11))
 - [ ] Lot 8.4 : une construction reproductible : dépendances verrouillées, images et actions épinglées, Dependabot ([#12](https://github.com/LamaJoker/vigie/issues/12))
