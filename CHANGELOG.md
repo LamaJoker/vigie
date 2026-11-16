@@ -10,13 +10,18 @@ Les versions 0.1 à 0.5 ont été reconstituées le 10/11/2026 à partir des pul
 - Feuille de route découpée en lots, jalons et tickets GitHub ; décisions d'architecture ; schéma d'architecture ; ce journal des versions ; licence MIT (lot 0, [#8](https://github.com/LamaJoker/vigie/issues/8)).
 - Vérification automatique des liens de la documentation, dans `make lint` et dans la CI (lot 0).
 - Intégration continue GitHub Actions : style et analyse, tests sur Python 3.12 et 3.14 avec couverture minimale, tests Bash, essai de bout en bout de la pile, publication de l'image sur `ghcr.io` depuis `main` ; cible `make ci` ([PR 7](https://github.com/LamaJoker/vigie/pull/7)).
-
 - Colonne `motif_fin` des incidents : pourquoi un incident s'est fermé autrement que par le retour du site (lot 8.1).
+- Fuseau horaire d'affichage réglable (`[affichage] fuseau`, UTC par défaut, `Europe/Paris` dans la configuration fournie) ; la page indique son fuseau, et ses heures sont aussi lisibles par une machine (`<time datetime>` en UTC) (lot 8.2, [#10](https://github.com/LamaJoker/vigie/issues/10)).
+- Intervalle de la sonde dans la configuration (`[sonde] intervalle`, 300 s par défaut) ; `VIGIE_INTERVALLE` le remplace, et l'option `--intervalle` passe avant tout (lot 8.2).
+- Mesures périmées : au-delà de 3 intervalles sans mesure, `/api/sites` renvoie `perime` et `age_secondes`, et la page affiche un bandeau orange au lieu du bandeau vert (lot 8.2).
+- Commande `vigie sante-sonde`, utilisée comme contrôle de santé du conteneur de la sonde (lot 8.2).
+- Dépendance `tzdata` : les fuseaux horaires fonctionnent même dans une image qui n'en contient pas (lot 8.2).
 
 ### Modifié
 - Les « semaines » deviennent des « étapes » : `docs/semaines/` devient `docs/etapes/` (lot 0).
 - **Le temps de réponse mesuré s'arrête désormais à la réception des en-têtes** : la sonde ne télécharge plus le corps des pages. Les temps baissent d'environ 35 à 45 % sur les gros sites. Ils ne sont donc pas directement comparables à ceux d'avant (lot 8.1, [#9](https://github.com/LamaJoker/vigie/issues/9)).
 - `vigie surveiller` survit aux erreurs imprévues d'un passage, mais s'arrête avec le code 1 après 5 erreurs imprévues de suite, pour que Docker ou Kubernetes la relance (lot 8.1).
+- `VIGIE_INTERVALLE` doit être un nombre de secondes strictement positif : `0` est refusé, puisque l'intervalle sert aussi à juger la fraîcheur des mesures (lot 8.2).
 
 ### Corrigé
 - Une adresse au port impossible (`https://example.com:99999`) faisait planter tout le passage : plus aucun site n'était mesuré. Elle est maintenant refusée au chargement de la configuration (lot 8.1).
@@ -24,6 +29,8 @@ Les versions 0.1 à 0.5 ont été reconstituées le 10/11/2026 à partir des pul
 - Les adresses contenant un espace, un caractère invisible, sans nom d'hôte ou de plus de 2 000 caractères sont refusées au chargement (lot 8.1).
 - Une erreur imprévue sur un site faisait échouer tout le passage. Le site est maintenant noté `DOWN` (« erreur interne »), la trace part dans le journal, et les autres sites sont mesurés (lot 8.1).
 - Un site retiré de la configuration gardait un incident « en cours » pour toujours, et une alerte encore en attente pour lui finissait par partir. L'incident est maintenant fermé sans alerte (lot 8.1).
+- Dans un conteneur, la page affichait les heures en UTC sans le dire : une heure de décalage avec Paris en hiver (lot 8.2).
+- Quand la sonde s'arrêtait, la page continuait d'afficher « Tous les sites répondent » avec des mesures de plus en plus vieilles (lot 8.2).
 
 ## [0.5.0] - 2026-11-09
 

@@ -86,7 +86,13 @@ class Gestionnaire(http.server.BaseHTTPRequestHandler):
 @pytest.fixture(autouse=True)
 def environnement_propre(monkeypatch: pytest.MonkeyPatch) -> None:
     """Les variables VIGIE_* de la machine ne doivent pas influencer les tests."""
-    for variable in ("VIGIE_CONFIG", "VIGIE_LOG", "VIGIE_DATABASE_URL", "VIGIE_DISCORD_WEBHOOK"):
+    for variable in (
+        "VIGIE_CONFIG",
+        "VIGIE_LOG",
+        "VIGIE_DATABASE_URL",
+        "VIGIE_DISCORD_WEBHOOK",
+        "VIGIE_INTERVALLE",
+    ):
         monkeypatch.delenv(variable, raising=False)
 
 
@@ -115,12 +121,16 @@ def ecrire_config(tmp_path: Path):
     """Écrit un fichier de configuration avec les adresses données."""
 
     def _ecrire(
-        urls: list[str], delai: float = 2, paralleles: int = 10, echecs_avant_alerte: int = 2
+        urls: list[str],
+        delai: float = 2,
+        paralleles: int = 10,
+        echecs_avant_alerte: int = 2,
+        intervalle: float | None = None,
     ) -> Path:
-        lignes = [
-            f"[sonde]\ndelai = {delai}\nparalleles = {paralleles}\n",
-            f"[alertes]\nechecs_avant_alerte = {echecs_avant_alerte}\n",
-        ]
+        sonde = f"[sonde]\ndelai = {delai}\nparalleles = {paralleles}\n"
+        if intervalle is not None:
+            sonde += f"intervalle = {intervalle}\n"
+        lignes = [sonde, f"[alertes]\nechecs_avant_alerte = {echecs_avant_alerte}\n"]
         for numero, url in enumerate(urls, start=1):
             lignes.append(f'[[sites]]\nnom = "site {numero}"\nurl = "{url}"\n')
         chemin = tmp_path / "vigie.toml"

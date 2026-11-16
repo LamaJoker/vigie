@@ -9,13 +9,13 @@
     :root {
       --fond: #f6f7f9; --carte: #ffffff; --texte: #1d2330; --doux: #5d6678; --bord: #dfe3ea;
       --ok: #1f7a4d; --ok-fond: #e3f4ea; --panne: #b42318; --panne-fond: #fde8e6;
-      --inconnu: #5d6678; --inconnu-fond: #eceff3;
+      --inconnu: #5d6678; --inconnu-fond: #eceff3; --perime: #9a5b00; --perime-fond: #fdf1dc;
     }
     @media (prefers-color-scheme: dark) {
       :root {
         --fond: #12151b; --carte: #1b2029; --texte: #e8ebf1; --doux: #9aa3b4; --bord: #2c3340;
         --ok: #5fd39a; --ok-fond: #183528; --panne: #ff8a7d; --panne-fond: #3d1c19;
-        --inconnu: #9aa3b4; --inconnu-fond: #262c37;
+        --inconnu: #9aa3b4; --inconnu-fond: #262c37; --perime: #f5b94d; --perime-fond: #3a2b12;
       }
     }
     * { box-sizing: border-box; }
@@ -30,6 +30,10 @@
     .bandeau.ok { background: var(--ok-fond); color: var(--ok); }
     .bandeau.panne { background: var(--panne-fond); color: var(--panne); }
     .bandeau.inconnu { background: var(--inconnu-fond); color: var(--inconnu); }
+    .bandeau.perime { background: var(--perime-fond); color: var(--perime); }
+    .bandeau .detail { display: block; font-weight: 400; font-size: .9rem; }
+    .etat.perime { background: var(--perime-fond); color: var(--perime); }
+    .ancien { display: block; font-size: .8rem; color: var(--perime); white-space: normal; }
     .tableau { overflow-x: auto; background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; }
     table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
     th, td { padding: 12px 14px; text-align: left; border-bottom: 1px solid var(--bord); white-space: nowrap; }
@@ -58,7 +62,11 @@
     <p class="bandeau inconnu">Aucune mesure pour l'instant : lancez « vigie sonder ».</p>
   {% elif en_panne %}
     <p class="bandeau panne">{{ en_panne | length }} site{{ "s" if en_panne | length > 1 }} en panne : {{ en_panne | map(attribute="nom") | join(", ") }}</p>
-  {% else %}
+  {% endif %}
+  {% if perimes %}
+    <p class="bandeau perime">Mesures périmées : dernière mesure il y a {{ age_plus_recent | age }}
+      <span class="detail">La sonde ne tourne peut-être plus. Sites concernés : {{ perimes | map(attribute="nom") | join(", ") }}.</span></p>
+  {% elif mesures_existent and not en_panne %}
     <p class="bandeau ok">Tous les sites répondent</p>
   {% endif %}
 
@@ -82,8 +90,13 @@
             <a class="url" href="{{ site.url }}" rel="noopener">{{ site.url }}</a>
           </td>
           <td>
-            <span class="etat {{ (site.etat or 'inconnu') | lower }}">{{ site.etat or "?" }}</span>
-            {% if site.erreur %}<span class="erreur">{{ site.erreur }}</span>{% endif %}
+            {% if site.perime %}
+              <span class="etat perime">?</span>
+              <span class="ancien">dernier état connu : {{ site.etat }}, il y a {{ site.age_secondes | age }}</span>
+            {% else %}
+              <span class="etat {{ (site.etat or 'inconnu') | lower }}">{{ site.etat or "?" }}</span>
+              {% if site.erreur %}<span class="erreur">{{ site.erreur }}</span>{% endif %}
+            {% endif %}
           </td>
           <td class="nombre">{{ site.code if site.code is not none else "—" }}</td>
           <td class="nombre">{{ "%d ms" | format(site.duree_ms) if site.duree_ms is not none else "—" }}</td>
@@ -93,7 +106,7 @@
               <span class="url">{{ site.mesures }} mesure{{ "s" if site.mesures > 1 }}</span>
             {% else %}—{% endif %}
           </td>
-          <td>{{ site.date.astimezone().strftime("%d/%m %H:%M:%S") if site.date else "—" }}</td>
+          <td>{% if site.date %}<time datetime="{{ site.date.astimezone(utc).isoformat() }}">{{ site.date.astimezone(zone).strftime("%d/%m %H:%M:%S") }}</time>{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -117,10 +130,10 @@
         {% for incident in incidents %}
         <tr>
           <td>{{ incident.nom }}</td>
-          <td>{{ incident.debut.astimezone().strftime("%d/%m %H:%M") }}</td>
+          <td><time datetime="{{ incident.debut.astimezone(utc).isoformat() }}">{{ incident.debut.astimezone(zone).strftime("%d/%m %H:%M") }}</time></td>
           <td>
             {% if incident.en_cours %}<span class="etat down">en cours</span>
-            {% else %}{{ incident.fin.astimezone().strftime("%d/%m %H:%M") }}{% endif %}
+            {% else %}<time datetime="{{ incident.fin.astimezone(utc).isoformat() }}">{{ incident.fin.astimezone(zone).strftime("%d/%m %H:%M") }}</time>{% endif %}
           </td>
           <td class="nombre">{{ incident.duree }}</td>
           <td class="cause">{{ incident.cause or "—" }}</td>
@@ -135,6 +148,7 @@
 
   <p class="pied">
     Page générée le {{ mise_a_jour }}, actualisée toutes les minutes ·
+    heures affichées dans le fuseau {{ fuseau }} (UTC{{ decalage[:3] }}:{{ decalage[3:] }}) ·
     <a href="/api/sites">API JSON</a> · <a href="/docs">documentation de l'API</a>
   </p>
 </main>

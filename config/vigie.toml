@@ -1,8 +1,13 @@
 # Configuration de la sonde Vigie.
 
 [sonde]
-delai = 10       # secondes accordées à chaque site, redirections comprises
-paralleles = 10  # nombre de sites testés en même temps
+delai = 10        # secondes accordées à chaque site, redirections comprises
+paralleles = 10   # nombre de sites testés en même temps
+intervalle = 300  # secondes entre deux passages (la variable VIGIE_INTERVALLE prime)
+# Au-delà de 3 intervalles sans mesure, la page de statut signale des mesures périmées.
+
+[affichage]
+fuseau = "Europe/Paris"  # fuseau horaire des heures affichées sur la page de statut
 
 [alertes]
 # Nombre d'échecs consécutifs avant d'ouvrir un incident et d'envoyer une alerte.

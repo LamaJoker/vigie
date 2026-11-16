@@ -1,16 +1,21 @@
 """Lecture et validation de la configuration de Vigie (fichier TOML)."""
 
+import math
+import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 import httpx
 
 DELAI_PAR_DEFAUT = 10.0
 PARALLELES_PAR_DEFAUT = 10
+INTERVALLE_PAR_DEFAUT = 300.0
 ECHECS_AVANT_ALERTE_PAR_DEFAUT = 2
+FUSEAU_PAR_DEFAUT = "UTC"
 LONGUEUR_MAX_URL = 2000  # au-delà, beaucoup de serveurs refusent la requête
 
 
@@ -31,10 +36,21 @@ class Configuration:
     paralleles: int = PARALLELES_PAR_DEFAUT  # sites testés en même temps
     # échecs consécutifs avant d'ouvrir un incident : évite d'alerter pour un raté isolé
     echecs_avant_alerte: int = ECHECS_AVANT_ALERTE_PAR_DEFAUT
+    # secondes entre deux passages : sert à la sonde, et à l'API pour juger la fraîcheur
+    intervalle: float = INTERVALLE_PAR_DEFAUT
+    fuseau: str = FUSEAU_PAR_DEFAUT  # fuseau horaire d'affichage de la page de statut
+
+    @property
+    def zone(self) -> ZoneInfo:
+        return ZoneInfo(self.fuseau)
 
 
 def charger(chemin: Path) -> Configuration:
-    """Lit un fichier TOML et renvoie une configuration validée."""
+    """Lit un fichier TOML et renvoie une configuration validée.
+
+    La variable d'environnement VIGIE_INTERVALLE, si elle est définie et non vide,
+    remplace l'intervalle du fichier : pratique pour les essais et les conteneurs.
+    """
     try:
         with chemin.open("rb") as fichier:
             donnees = tomllib.load(fichier)
@@ -49,7 +65,23 @@ def charger(chemin: Path) -> Configuration:
         raise ErreurConfiguration(f"{chemin} n'est pas encodé en UTF-8") from None
     except tomllib.TOMLDecodeError as erreur:
         raise ErreurConfiguration(f"{chemin} n'est pas un fichier TOML valide : {erreur}") from None
-    return analyser(donnees)
+    return appliquer_environnement(analyser(donnees))
+
+
+def appliquer_environnement(config: Configuration) -> Configuration:
+    """Applique les réglages venant de l'environnement (VIGIE_INTERVALLE)."""
+    brut = os.environ.get("VIGIE_INTERVALLE", "").strip()
+    if not brut:
+        return config
+    try:
+        intervalle = float(brut)
+    except ValueError:
+        intervalle = math.nan
+    if not (math.isfinite(intervalle) and intervalle > 0):
+        raise ErreurConfiguration(
+            f"VIGIE_INTERVALLE doit être un nombre de secondes positif, reçu {brut!r}"
+        )
+    return replace(config, intervalle=intervalle)
 
 
 def analyser(donnees: dict[str, Any]) -> Configuration:
@@ -66,6 +98,22 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
     if not _est_entier(paralleles) or paralleles < 1:
         raise ErreurConfiguration(
             f"sonde.paralleles doit être un entier supérieur ou égal à 1, reçu {paralleles!r}"
+        )
+
+    intervalle = sonde.get("intervalle", INTERVALLE_PAR_DEFAUT)
+    if not _est_nombre(intervalle) or intervalle <= 0:
+        raise ErreurConfiguration(
+            f"sonde.intervalle doit être un nombre de secondes positif, reçu {intervalle!r}"
+        )
+
+    affichage = donnees.get("affichage", {})
+    if not isinstance(affichage, dict):
+        raise ErreurConfiguration("la section [affichage] est mal formée")
+    fuseau = affichage.get("fuseau", FUSEAU_PAR_DEFAUT)
+    if not _fuseau_connu(fuseau):
+        raise ErreurConfiguration(
+            f"affichage.fuseau doit être un fuseau horaire connu, comme « Europe/Paris »,"
+            f" reçu {fuseau!r}"
         )
 
     alertes = donnees.get("alertes", {})
@@ -114,7 +162,20 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
         delai=float(delai),
         paralleles=paralleles,
         echecs_avant_alerte=echecs,
+        intervalle=float(intervalle),
+        fuseau=fuseau,
     )
+
+
+def _fuseau_connu(fuseau: object) -> bool:
+    if not isinstance(fuseau, str) or not fuseau:
+        return False
+    try:
+        ZoneInfo(fuseau)
+    except Exception:
+        # Nom inconnu, dossier (« Europe »), chemin suspect (« ../ »)... : tout est refusé.
+        return False
+    return True
 
 
 def probleme_url(url: str) -> str | None:

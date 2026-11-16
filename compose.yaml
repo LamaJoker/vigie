@@ -16,6 +16,9 @@ x-vigie: &vigie
   init: true  # petit gestionnaire de processus : relaie les signaux, nettoie les zombies
   environment:
     VIGIE_DATABASE_URL: postgresql://vigie:${VIGIE_MOT_DE_PASSE_BASE:?définir VIGIE_MOT_DE_PASSE_BASE dans .env (make docker-demarrer le crée)}@base:5432/vigie
+    # Vide : l'intervalle vient de config/vigie.toml. L'API et la sonde doivent en avoir
+    # le même, pour que la page sache quand une mesure est périmée.
+    VIGIE_INTERVALLE: ${VIGIE_INTERVALLE:-}
   volumes:
     # La liste des sites se modifie sans reconstruire l'image.
     - ./config/vigie.toml:/etc/vigie/vigie.toml:ro
@@ -81,10 +84,18 @@ services:
     environment:
       VIGIE_DATABASE_URL: postgresql://vigie:${VIGIE_MOT_DE_PASSE_BASE:?définir VIGIE_MOT_DE_PASSE_BASE dans .env}@base:5432/vigie
       VIGIE_DISCORD_WEBHOOK: ${VIGIE_DISCORD_WEBHOOK:-}
-      VIGIE_INTERVALLE: ${VIGIE_INTERVALLE:-300}
+      VIGIE_INTERVALLE: ${VIGIE_INTERVALLE:-}
     depends_on:
       init-db:
         condition: service_completed_successfully
+    # La sonde est « saine » si elle enregistre des mesures récentes. Une sonde qui tourne
+    # mais n'écrit plus rien (base injoignable...) devient « unhealthy ».
+    healthcheck:
+      test: ["CMD", "vigie", "sante-sonde"]
+      interval: ${VIGIE_SANTE_INTERVALLE:-60s}
+      timeout: 10s
+      start_period: ${VIGIE_SANTE_DEMARRAGE:-60s}
+      retries: 3
     restart: unless-stopped
 
 volumes:

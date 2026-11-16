@@ -2,6 +2,7 @@
 
     vigie sonder         [--config FICHIER] [--log FICHIER] [--base URL]
     vigie surveiller     [mêmes options] [--intervalle SECONDES] [--passages N]
+    vigie sante-sonde    [--config FICHIER] [--base URL]
     vigie init-db        [--base URL]
     vigie serveur        [--config FICHIER] [--base URL] [--hote ADRESSE] [--port PORT]
     vigie tester-alerte
@@ -20,10 +21,10 @@ import fcntl
 import os
 import signal
 import sys
-import threading
 import traceback
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import Event
 
 from vigie import __version__
 from vigie.config import Configuration, ErreurConfiguration, charger
@@ -82,14 +83,21 @@ def construire_analyseur() -> argparse.ArgumentParser:
     surveiller.add_argument(
         "--intervalle",
         type=float,
-        default=float(os.environ.get("VIGIE_INTERVALLE", 300)),
-        help="secondes entre deux passages (défaut : $VIGIE_INTERVALLE ou 300)",
+        default=None,
+        help="secondes entre deux passages"
+        " (défaut : $VIGIE_INTERVALLE, sinon sonde.intervalle de la configuration)",
     )
     surveiller.add_argument(
         "--passages",
         type=int,
         default=0,
         help="nombre de passages avant l'arrêt (défaut : 0, sans fin)",
+    )
+
+    commandes.add_parser(
+        "sante-sonde",
+        parents=[option_config, option_base],
+        help="code 0 si une mesure récente est en base (contrôle de santé de la sonde)",
     )
 
     commandes.add_parser(
@@ -207,20 +215,24 @@ def commande_sonder(config_chemin: Path, log: Path, url_base: str | None) -> int
 
 
 def commande_surveiller(
-    config_chemin: Path, log: Path, url_base: str | None, intervalle: float, passages: int
+    config_chemin: Path, log: Path, url_base: str | None, intervalle: float | None, passages: int
 ) -> int:
     """Lance « sonder » en boucle, jusqu'à un signal d'arrêt (SIGTERM, Ctrl+C).
 
     Docker arrête un conteneur en lui envoyant SIGTERM : on termine proprement le
     passage en cours au lieu d'être coupé au milieu d'une écriture en base.
     """
-    if intervalle < 0 or passages < 0:
+    if (intervalle is not None and intervalle < 0) or passages < 0:
         return erreur("--intervalle et --passages ne peuvent pas être négatifs")
     # Une configuration invalide est une erreur définitive : inutile de boucler.
-    if lire_config(config_chemin) is None:
+    config = lire_config(config_chemin)
+    if config is None:
         return 2
+    # Priorité : option --intervalle, puis VIGIE_INTERVALLE, puis le fichier (voir charger).
+    if intervalle is None:
+        intervalle = config.intervalle
 
-    arret = threading.Event()
+    arret = Event()
 
     def demander_arret(numero: int, _cadre: object) -> None:
         nom = signal.Signals(numero).name
@@ -259,6 +271,45 @@ def commande_surveiller(
     finally:
         for sig, ancien in anciens.items():
             signal.signal(sig, ancien)
+    return 0
+
+
+def commande_sante_sonde(config_chemin: Path, url_base: str | None) -> int:
+    """Contrôle de santé de la sonde : une mesure récente existe-t-elle en base ?
+
+    Code 0 : oui. Code 1 : aucune mesure, mesure trop vieille, ou base injoignable,
+    c'est-à-dire que la sonde ne fait plus son travail. Code 2 : erreur d'utilisation.
+    """
+    if not url_base:
+        return erreur("adresse de la base manquante : --base ou VIGIE_DATABASE_URL")
+    config = lire_config(config_chemin)
+    if config is None:
+        return 2
+
+    import psycopg
+
+    from vigie import base
+
+    try:
+        with base.connecter(url_base) as conn:
+            derniere = base.derniere_mesure(conn, [site.url for site in config.sites])
+    except psycopg.Error as probleme:
+        print(f"vigie: base injoignable : {probleme}", file=sys.stderr)
+        return 1
+    if derniere is None:
+        print("vigie: aucune mesure enregistrée pour les sites surveillés", file=sys.stderr)
+        return 1
+
+    age = (datetime.now(UTC) - derniere).total_seconds()
+    seuil = base.seuil_peremption(config.intervalle).total_seconds()
+    if age > seuil:
+        print(
+            f"vigie: dernière mesure trop vieille : il y a {base.formater_age(age)}"
+            f" (au plus {base.formater_age(seuil)})",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"Sonde en bonne santé : dernière mesure il y a {base.formater_age(age)}.")
     return 0
 
 
@@ -321,6 +372,8 @@ def main(argv: list[str] | None = None) -> int:
     arguments = construire_analyseur().parse_args(argv)
     if arguments.commande == "sonder":
         return commande_sonder(arguments.config, arguments.log, arguments.base)
+    if arguments.commande == "sante-sonde":
+        return commande_sante_sonde(arguments.config, arguments.base)
     if arguments.commande == "surveiller":
         return commande_surveiller(
             arguments.config,

@@ -6,8 +6,8 @@ parce qu'elle peut contenir un mot de passe.
 """
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from importlib import resources
 from typing import Any
 
@@ -18,6 +18,9 @@ from vigie.config import Site
 from vigie.sonde import Resultat
 
 PERIODE_DISPONIBILITE = timedelta(hours=24)
+# Une mesure est « périmée » quand elle a plus de 3 intervalles de sonde : la sonde a
+# raté au moins deux passages de suite, elle ne tourne probablement plus.
+INTERVALLES_AVANT_PEREMPTION = 3
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,43 @@ class EtatSite:
     erreur: str | None
     disponibilite: float | None  # part des mesures UP sur la période, de 0 à 1
     mesures: int  # nombre de mesures sur la période
+    age_secondes: int | None = None  # âge de la dernière mesure
+    perime: bool = False  # la dernière mesure est trop vieille pour être crue
+
+
+def seuil_peremption(intervalle: float) -> timedelta:
+    return timedelta(seconds=INTERVALLES_AVANT_PEREMPTION * intervalle)
+
+
+def avec_fraicheur(
+    etats: Iterable[EtatSite], intervalle: float, maintenant: datetime | None = None
+) -> list[EtatSite]:
+    """Ajoute à chaque état l'âge de sa dernière mesure, et s'il est périmé."""
+    maintenant = maintenant or datetime.now(UTC)
+    seuil = seuil_peremption(intervalle).total_seconds()
+    resultat = []
+    for etat in etats:
+        if etat.date is None:
+            resultat.append(etat)
+            continue
+        age = max(0, int((maintenant - etat.date).total_seconds()))
+        resultat.append(replace(etat, age_secondes=age, perime=age > seuil))
+    return resultat
+
+
+def formater_age(secondes: float) -> str:
+    """Âge lisible et arrondi : « 45 s », « 12 min », « 2 h 5 min », « 3 j 4 h »."""
+    secondes = max(0, int(secondes))
+    if secondes < 60:
+        return f"{secondes} s"
+    minutes = secondes // 60
+    if minutes < 60:
+        return f"{minutes} min"
+    heures, minutes = divmod(minutes, 60)
+    if heures < 24:
+        return f"{heures} h {minutes} min" if minutes else f"{heures} h"
+    jours, heures = divmod(heures, 24)
+    return f"{jours} j {heures} h" if heures else f"{jours} j"
 
 
 def connecter(url: str) -> psycopg.Connection[dict[str, Any]]:
@@ -122,6 +162,14 @@ def etats(
             )
         )
     return resultat
+
+
+def derniere_mesure(conn: psycopg.Connection, urls: Sequence[str]) -> datetime | None:
+    """Date de la mesure la plus récente parmi ces sites, ou None s'il n'y en a aucune."""
+    ligne = conn.execute(
+        "SELECT max(date) AS date FROM sondes WHERE url = ANY(%s)", (list(urls),)
+    ).fetchone()
+    return ligne["date"] if ligne else None
 
 
 def historique(conn: psycopg.Connection, url: str, limite: int = 50) -> list[dict[str, Any]]:
