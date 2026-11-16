@@ -87,7 +87,7 @@ Avant de déployer Vigie sur des serveurs et dans un cluster, la rendre fiable, 
 - [x] Lot 8.1 : une sonde qui ne tombe pas, même avec une adresse mal écrite ([#9](https://github.com/LamaJoker/vigie/issues/9)) ; compte rendu : [docs/etapes/etape-08.md](docs/etapes/etape-08.md)
 - [x] Lot 8.2 : une page qui ne ment pas : heure locale, données périmées signalées ([#10](https://github.com/LamaJoker/vigie/issues/10))
 - [x] Lot 8.3 : une base qui dure : migrations, rétention, pool de connexions ([#11](https://github.com/LamaJoker/vigie/issues/11))
-- [ ] Lot 8.4 : une construction reproductible : dépendances verrouillées, images et actions épinglées, Dependabot ([#12](https://github.com/LamaJoker/vigie/issues/12))
+- [x] Lot 8.4 : une construction reproductible : dépendances verrouillées, images et actions épinglées, Dependabot ([#12](https://github.com/LamaJoker/vigie/issues/12))
 - [ ] Lot 8.5 : l'analyse de sécurité dans la CI : failles, secrets, code ([#13](https://github.com/LamaJoker/vigie/issues/13))
 - [ ] Lot 8.6 : des versions publiées et signées, une branche `main` protégée ([#14](https://github.com/LamaJoker/vigie/issues/14))
 

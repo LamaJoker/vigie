@@ -61,10 +61,11 @@ Les conteneurs tournent sans droits root, avec un système de fichiers en lectur
 
 ## Utilisation sans Docker
 
-Prérequis : Linux avec Python 3.12 ou plus récent, `make`, le module `venv` et PostgreSQL (sur Ubuntu : `sudo apt install python3-venv make postgresql`).
+Prérequis : Linux avec Python 3.12 ou plus récent, `make` et PostgreSQL (sur Ubuntu : `sudo apt install make postgresql`), et [uv](https://docs.astral.sh/uv/), le gestionnaire des dépendances. `scripts/installer-uv.sh` installe uv dans `~/.local/bin`, à la version fixée par le projet, après avoir vérifié l'empreinte de l'archive.
 
 ```bash
-make installer     # crée l'environnement virtuel .venv et installe Vigie
+scripts/installer-uv.sh   # une seule fois
+make installer     # crée l'environnement virtuel .venv et installe Vigie, aux versions de uv.lock
 make db-demarrer   # lance une base PostgreSQL de développement dans .pgdata/
 make sonder        # teste les sites de config/vigie.toml et enregistre les résultats
 make serveur       # page de statut sur http://127.0.0.1:8000
@@ -152,10 +153,19 @@ Une mesure est **périmée** quand elle a plus de 3 intervalles, soit 15 minutes
 - **Rétention.** `vigie surveiller` supprime une fois par jour les mesures plus vieilles que `[retention] jours` (90 par défaut). `vigie purger` fait la même chose à la demande. Les incidents sont toujours gardés.
 - **Pool de connexions.** L'API garde au plus 5 connexions ouvertes vers la base et les prête aux requêtes, au lieu d'en ouvrir une par requête. Ses connexions s'appellent `vigie-api` dans `pg_stat_activity`.
 
+### Une construction reproductible
+
+Tout ce que la construction télécharge est désigné par une **empreinte**, pas par une étiquette qui pourrait changer de contenu ([décision 0007](docs/decisions/0007-tout-epingler-par-empreinte.md)) :
+
+- les dépendances Python, par `uv.lock` : version exacte et empreinte de chaque paquet, pour Python 3.12 à 3.14. L'image et la CI refusent tout paquet dont l'empreinte diffère ;
+- les images Docker (`python:3.14-slim@sha256:…`) et les actions GitHub (SHA complet du commit).
+
+`make lint` le vérifie (`scripts/verifier_epinglage.py`). Après une modification des dépendances dans `pyproject.toml`, `make verrouiller` recalcule le verrou. Les nouvelles versions arrivent chaque lundi par des pull requests de [Dependabot](.github/dependabot.yml), testées par la CI comme les autres.
+
 ### Vérifier le code
 
 ```bash
-make tests          # 261 tests Python (pytest) et 17 tests Bash (bats)
+make tests          # 287 tests Python (pytest) et 17 tests Bash (bats)
 make lint           # style et qualité : ruff pour Python, ShellCheck pour Bash
 make lint-docker    # Dockerfile (hadolint) et compose.yaml
 make tests-docker   # essai de bout en bout de la pile, dans un projet jetable
@@ -168,8 +178,8 @@ make ci             # tout ce que vérifie l'intégration continue, en local
 
 | Étape | Contenu |
 |---|---|
-| Style et analyse | ruff, ShellCheck, hadolint, validation de `compose.yaml`, liens de la documentation |
-| Tests Python | pytest avec PostgreSQL, sur Python 3.12 et 3.14, couverture d'au moins 95 % exigée |
+| Style et analyse | ruff, ShellCheck, hadolint, validation de `compose.yaml`, liens de la documentation, verrou à jour, épinglage |
+| Tests Python | pytest avec PostgreSQL, sur Python 3.12 et 3.14 avec le même verrou, couverture d'au moins 95 % exigée |
 | Tests Bash | bats |
 | Image et essai | construction de l'image et essai de bout en bout de toute la pile |
 | Publication | sur `main` seulement : l'image testée est publiée sur GitHub Container Registry |
@@ -213,16 +223,17 @@ vigie/
 ├── compose.yaml      la pile complète : base, API, sonde
 ├── .dockerignore     ce qui n'entre jamais dans l'image (secrets, tests...)
 ├── pyproject.toml    description du paquet Python et de ses dépendances
+├── uv.lock           versions exactes et empreintes des dépendances (make verrouiller)
 ├── .env.exemple      modèle du fichier des secrets (.env, jamais commité)
 ├── config/           configuration de la sonde (sites, délais)
 ├── src/vigie/        le code Python : sonde, base de données et ses migrations, alertes, API, page de statut
 ├── sonde/            la version Bash et son installation cron
-├── scripts/          outils du dépôt (vérification des liens de la documentation)
+├── scripts/          outils du dépôt : liens de la documentation, épinglage, installation de uv
 ├── tests/
 │   ├── python/       tests pytest
 │   ├── bash/         tests bats et serveur HTTP de test
 │   └── docker/       essai de bout en bout de la pile Docker
-├── .github/          intégration continue (workflows/ci.yml) et modèle de pull request
+├── .github/          intégration continue (workflows/ci.yml), Dependabot, modèle de pull request
 └── docs/
     ├── etapes/       un compte rendu par étape, et le modèle des comptes rendus
     ├── decisions/    décisions d'architecture (contexte, choix, conséquences)

@@ -19,6 +19,13 @@ Les versions 0.1 à 0.5 ont été reconstituées le 10/11/2026 à partir des pul
 - Migrations du schéma : fichiers numérotés dans `src/vigie/migrations/`, table `migrations` avec l'empreinte de chaque fichier, une transaction par migration, verrou consultatif PostgreSQL contre les lancements simultanés ; commande `vigie migrer`. Les bases créées par l'ancien `schema.sql` sont mises à niveau ([décision 0006](docs/decisions/0006-migrateur-maison.md)) (lot 8.3, [#11](https://github.com/LamaJoker/vigie/issues/11)).
 - Rétention des mesures : `[retention] jours` (90 par défaut), commande `vigie purger`, purge quotidienne par `vigie surveiller`. Les incidents sont gardés. Index sur la date des mesures (migration 0003) (lot 8.3).
 - Pool de connexions dans l'API (`psycopg-pool`) : 5 connexions au plus, nommées `vigie-api` dans `pg_stat_activity`, ouvertes et fermées avec l'application. Sous 50 requêtes simultanées, l'API ouvrait jusqu'à 40 connexions à la base ; elle en garde maintenant 5 au plus (lot 8.3).
+- Verrou des dépendances Python, `uv.lock` : version exacte et empreinte SHA-256 de chaque paquet, valable pour Python 3.12 à 3.14 ; cible `make verrouiller` (lot 8.4, [#12](https://github.com/LamaJoker/vigie/issues/12)).
+- Contrôle d'épinglage `scripts/verifier_epinglage.py`, dans `make lint` et la CI : toute action, image ou dépendance sans empreinte est refusée (lot 8.4).
+- Dependabot (`.github/dependabot.yml`) : chaque lundi, mises à jour des dépendances Python, des images Docker et des actions GitHub, mineures groupées, versions d'au moins 7 jours, 5 pull requests ouvertes au plus (lot 8.4).
+- `scripts/installer-uv.sh` installe uv à une version fixée, après vérification de l'empreinte de l'archive (lot 8.4).
+
+### Sécurité
+- Tout ce que la construction télécharge est désigné par une empreinte ([décision 0007](docs/decisions/0007-tout-epingler-par-empreinte.md)) : les images de départ du Dockerfile, l'image PostgreSQL de `compose.yaml`, les images de hadolint et actionlint, et les actions GitHub (SHA complet du commit). L'image et la CI installent les dépendances depuis le verrou et refusent tout paquet dont l'empreinte diffère (lot 8.4).
 
 ### Modifié
 - Les « semaines » deviennent des « étapes » : `docs/semaines/` devient `docs/etapes/` (lot 0).
@@ -27,6 +34,9 @@ Les versions 0.1 à 0.5 ont été reconstituées le 10/11/2026 à partir des pul
 - `VIGIE_INTERVALLE` doit être un nombre de secondes strictement positif : `0` est refusé, puisque l'intervalle sert aussi à juger la fraîcheur des mesures (lot 8.2).
 - `vigie init-db` devient `vigie migrer` ; l'ancien nom reste accepté. Le service Compose `init-db` s'appelle désormais `migrations` : après la mise à jour, `docker compose up --remove-orphans` supprime l'ancien conteneur arrêté (lot 8.3).
 - `schema.sql` disparaît, remplacé par les migrations (lot 8.3).
+- **Les dépendances s'installent avec uv** (`make installer`, la CI et le Dockerfile), et plus avec pip. Les outils de développement passent dans le groupe `dev` de `[dependency-groups]` : `pip install -e ".[dev]"` ne fonctionne plus. Le paquet se construit avec `uv_build`, intégré à uv, au lieu de setuptools (lot 8.4).
+- Actions GitHub mises à jour vers leurs versions sur Node.js 24, l'ancien Node.js 20 étant abandonné : `actions/checkout` v7, `actions/upload-artifact` v7, `actions/download-artifact` v8. `astral-sh/setup-uv` remplace `actions/setup-python` (lot 8.4).
+- L'environnement de Vigie dans l'image ne contient plus pip, devenu inutile (lot 8.4).
 
 ### Corrigé
 - Une adresse au port impossible (`https://example.com:99999`) faisait planter tout le passage : plus aucun site n'était mesuré. Elle est maintenant refusée au chargement de la configuration (lot 8.1).

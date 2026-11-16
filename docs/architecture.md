@@ -83,6 +83,7 @@ Le projet tourne en local, pour 0 € ([décision 0005](decisions/0005-tout-en-l
 |---|---|
 | Docker Compose sur le poste | Docker Compose sur un serveur, ou un orchestrateur |
 | GitHub Actions et ghcr.io | Pareil, ou GitLab CI et un registre interne |
+| `uv.lock`, images et actions épinglées, Dependabot | Pareil, souvent derrière un dépôt de paquets interne (Artifactory, Nexus) ; Renovate au lieu de Dependabot |
 | Base PostgreSQL dans un conteneur, avec un volume | Base gérée par le fournisseur cloud, ou par un opérateur Kubernetes |
 | Conteneurs système Incus (étape 9) | Machines virtuelles d'un cloud |
 | État Terraform local (étape 9) | État dans un stockage distant, avec verrou |
