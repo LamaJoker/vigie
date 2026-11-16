@@ -4,7 +4,7 @@
 
 > Service de surveillance de sites web : il vérifie régulièrement que des sites répondent, garde l'historique de leurs temps de réponse, publie une page de statut et envoie une alerte quand un site tombe.
 
-**Statut : en construction (étape 7 sur 14).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, en conteneurs Docker, vérifiés et publiés par GitHub Actions.
+**Statut : en construction (étape 8 sur 14, durcissement).** Version actuelle : une sonde, une base PostgreSQL, une API, une page de statut et des alertes Discord, en conteneurs Docker, vérifiés et publiés par GitHub Actions.
 
 ![Page de statut de Vigie](docs/images/page-statut.jpg)
 

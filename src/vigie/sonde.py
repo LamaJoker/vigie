@@ -1,6 +1,7 @@
 """Test des sites : une requête HTTP par site, plusieurs sites en parallèle."""
 
 import asyncio
+import logging
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
@@ -14,6 +15,8 @@ from vigie.config import Configuration, Site
 # Un robot poli dit qui il est et comment joindre son auteur : certains sites,
 # comme Wikipédia, refusent (code 403) les robots qui ne le font pas.
 AGENT = f"vigie/{__version__} (+https://github.com/LamaJoker/vigie; projet de formation DevOps)"
+
+journal = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -48,12 +51,20 @@ async def sonder_site(client: httpx.AsyncClient, site: Site, delai: float) -> Re
     try:
         # Délai TOTAL de la requête, redirections comprises (comme curl --max-time).
         async with asyncio.timeout(delai):
-            reponse = await client.get(site.url)
-        code = reponse.status_code
+            # Lecture en flux : on garde le code et les en-têtes, puis on ferme la
+            # connexion sans télécharger le corps de la page, qui ne sert à rien ici.
+            async with client.stream("GET", site.url) as reponse:
+                code = reponse.status_code
     except (TimeoutError, httpx.TimeoutException):
         erreur = f"pas de réponse en {delai:g} s"
     except httpx.HTTPError as exc:
         erreur = str(exc) or type(exc).__name__
+    except Exception as exc:
+        # Filet de sécurité : une erreur imprévue (bug, cas limite d'une bibliothèque)
+        # ne doit jamais empêcher de mesurer les autres sites. Le site est noté DOWN,
+        # et la trace complète part dans le journal pour qu'on puisse corriger.
+        journal.warning("erreur imprévue en testant %s", site.url, exc_info=True)
+        erreur = f"erreur interne ({type(exc).__name__})"
 
     duree_ms = round((time.perf_counter() - debut) * 1000)
     etat = "UP" if code is not None and 200 <= code < 400 else "DOWN"

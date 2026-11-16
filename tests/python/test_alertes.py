@@ -145,6 +145,33 @@ def test_un_site_qui_n_est_plus_surveille_disparait_des_incidents(conn):
     assert alertes.incidents_recents(conn, ["https://autre.test"]) == []
 
 
+def test_l_incident_d_un_site_retire_est_ferme_sans_alerte(conn):
+    passage(conn, panne(1), echecs_avant_alerte=1)  # incident ouvert, alerte de panne en attente
+    assert len(alertes.alertes_en_attente(conn)) == 1
+
+    assert alertes.fermer_incidents_retires(conn, ["https://autre.test"]) == 1
+
+    [incident] = incidents(conn)
+    assert incident["fin"] is not None
+    assert incident["motif_fin"] == alertes.MOTIF_SITE_RETIRE
+    assert alertes.alertes_en_attente(conn) == []  # ni panne ni rétablissement ne partira
+
+
+def test_les_incidents_des_sites_surveilles_restent_ouverts(conn):
+    passage(conn, panne(1), echecs_avant_alerte=1)
+    assert alertes.fermer_incidents_retires(conn, [A]) == 0
+    assert incidents(conn)[0]["fin"] is None
+
+
+def test_le_schema_met_a_niveau_une_base_d_avant_le_lot_8_1(conn):
+    # Une base créée avant le lot 8.1 n'a pas la colonne motif_fin : rejouer le schéma l'ajoute.
+    conn.execute("ALTER TABLE incidents DROP COLUMN motif_fin")
+    conn.commit()
+    base.initialiser(conn)
+    passage(conn, panne(1), echecs_avant_alerte=1)
+    assert alertes.fermer_incidents_retires(conn, []) == 1
+
+
 @pytest.mark.parametrize(
     ("secondes", "texte"),
     [(0, "0 s"), (45, "45 s"), (600, "10 min"), (3725, "1 h 2 min 5 s"), (-3, "0 s")],

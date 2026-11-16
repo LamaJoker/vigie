@@ -5,12 +5,56 @@ import signal
 import threading
 import time
 
+from vigie import cli
 from vigie.cli import main
 
 
 def surveiller(config, tmp_path, *options):
     log = tmp_path / "sondes.jsonl"
     return main(["surveiller", "--config", str(config), "--log", str(log), *options]), log
+
+
+def test_une_erreur_imprevue_n_arrete_pas_la_surveillance(
+    serveur, ecrire_config, tmp_path, monkeypatch, capsys
+):
+    vraie_commande = cli.commande_sonder
+    appels = []
+
+    def un_passage_sur_deux_casse(*arguments):
+        appels.append(1)
+        if len(appels) % 2 == 1:
+            raise RuntimeError("bug imprévu")
+        return vraie_commande(*arguments)
+
+    monkeypatch.setattr(cli, "commande_sonder", un_passage_sur_deux_casse)
+    config = ecrire_config([f"{serveur}/200"])
+
+    code, log = surveiller(config, tmp_path, "--intervalle", "0", "--passages", "4")
+
+    assert code == 0
+    assert len(appels) == 4
+    assert len(log.read_text(encoding="utf-8").splitlines()) == 2  # les passages réussis
+    erreurs = capsys.readouterr().err
+    assert erreurs.count("erreur imprévue") == 2
+    assert "RuntimeError: bug imprévu" in erreurs  # la trace complète est gardée
+
+
+def test_cinq_erreurs_imprevues_de_suite_arretent_la_surveillance(
+    serveur, ecrire_config, tmp_path, monkeypatch, capsys
+):
+    def toujours_casse(*arguments):
+        raise RuntimeError("bug permanent")
+
+    monkeypatch.setattr(cli, "commande_sonder", toujours_casse)
+    config = ecrire_config([f"{serveur}/200"])
+
+    # Sans --passages, la boucle est infinie : seul le garde-fou peut l'arrêter.
+    code, _ = surveiller(config, tmp_path, "--intervalle", "0")
+
+    assert code == 1
+    erreurs = capsys.readouterr().err
+    assert "(5/5 de suite)" in erreurs
+    assert "arrêt pour être relancé" in erreurs
 
 
 def test_un_nombre_de_passages_donne(serveur, ecrire_config, tmp_path, capsys):

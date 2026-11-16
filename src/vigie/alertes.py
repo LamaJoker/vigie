@@ -20,6 +20,7 @@ from vigie.sonde import Resultat
 
 PANNE = "panne"
 RETABLISSEMENT = "retablissement"
+MOTIF_SITE_RETIRE = "site retiré de la surveillance"
 
 
 @dataclass(frozen=True)
@@ -117,6 +118,22 @@ def marquer_envoyee(conn: psycopg.Connection, alerte: Alerte) -> None:
     else:
         conn.execute("UPDATE incidents SET alerte_fin = true WHERE id = %s", (alerte.incident,))
     conn.commit()
+
+
+def fermer_incidents_retires(conn: psycopg.Connection, urls_surveillees: Sequence[str]) -> int:
+    """Ferme, sans alerte, les incidents des sites qui ne sont plus dans la configuration.
+
+    Sans cela, un site retiré garderait une panne « en cours » pour toujours, et une
+    alerte encore en attente pour lui finirait par partir. Renvoie le nombre d'incidents fermés.
+    """
+    curseur = conn.execute(
+        "UPDATE incidents"
+        " SET fin = greatest(now(), debut), motif_fin = %s, alerte_debut = true, alerte_fin = true"
+        " WHERE fin IS NULL AND NOT (url = ANY(%s))",
+        (MOTIF_SITE_RETIRE, list(urls_surveillees)),
+    )
+    conn.commit()
+    return curseur.rowcount
 
 
 def incidents_recents(
