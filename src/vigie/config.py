@@ -16,6 +16,7 @@ PARALLELES_PAR_DEFAUT = 10
 INTERVALLE_PAR_DEFAUT = 300.0
 ECHECS_AVANT_ALERTE_PAR_DEFAUT = 2
 FUSEAU_PAR_DEFAUT = "UTC"
+RETENTION_PAR_DEFAUT = 90  # jours de mesures gardés en base
 LONGUEUR_MAX_URL = 2000  # au-delà, beaucoup de serveurs refusent la requête
 
 
@@ -39,6 +40,8 @@ class Configuration:
     # secondes entre deux passages : sert à la sonde, et à l'API pour juger la fraîcheur
     intervalle: float = INTERVALLE_PAR_DEFAUT
     fuseau: str = FUSEAU_PAR_DEFAUT  # fuseau horaire d'affichage de la page de statut
+    # les mesures plus vieilles sont supprimées (les incidents sont gardés)
+    retention_jours: int = RETENTION_PAR_DEFAUT
 
     @property
     def zone(self) -> ZoneInfo:
@@ -125,6 +128,15 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
             f"alertes.echecs_avant_alerte doit être un entier d'au moins 1, reçu {echecs!r}"
         )
 
+    retention = donnees.get("retention", {})
+    if not isinstance(retention, dict):
+        raise ErreurConfiguration("la section [retention] est mal formée")
+    jours = retention.get("jours", RETENTION_PAR_DEFAUT)
+    if not _est_entier(jours) or jours < 1:
+        raise ErreurConfiguration(
+            f"retention.jours doit être un nombre entier de jours, au moins 1, reçu {jours!r}"
+        )
+
     sites_bruts = donnees.get("sites", [])
     if not isinstance(sites_bruts, list) or not sites_bruts:
         raise ErreurConfiguration("la configuration doit déclarer au moins un site [[sites]]")
@@ -164,6 +176,7 @@ def analyser(donnees: dict[str, Any]) -> Configuration:
         echecs_avant_alerte=echecs,
         intervalle=float(intervalle),
         fuseau=fuseau,
+        retention_jours=jours,
     )
 
 

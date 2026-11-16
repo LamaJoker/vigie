@@ -91,6 +91,20 @@ port_base=$(compose port base 5432 2>/dev/null || true)
 [[ -z $port_base || $port_base == ":0" ]] || echec "le port de la base est publié : $port_base"
 echo "aucun port publié"
 
+etape "Les migrations ont tourné, et les relancer ne change rien"
+compose logs migrations | grep -E "Migration appliquée|Base de données" || true
+compose logs migrations | grep -q "Base de données à jour" || echec "les migrations n'ont pas tourné"
+relance=$(compose run --rm --no-deps migrations 2>&1) || echec "relancer les migrations échoue : $relance"
+grep -q "déjà à jour" <<<"$relance" || echec "la relance a modifié la base : $relance"
+grep "déjà à jour" <<<"$relance"
+
+etape "50 requêtes simultanées : l'API garde 5 connexions à la base au plus"
+seq 50 | xargs -P 50 -I{} curl -fsS -o /dev/null "$ADRESSE/api/sites" || echec "des requêtes ont échoué"
+connexions=$(compose exec -T base psql -U vigie -d vigie -tAc \
+  "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'vigie-api'")
+echo "connexions ouvertes par l'API : $connexions"
+[[ $connexions -ge 1 && $connexions -le 5 ]] || echec "$connexions connexions ouvertes par l'API"
+
 etape "Une sonde qui n'enregistre plus rien devient « unhealthy »"
 compose stop base >/dev/null 2>&1
 attendre_sante sonde unhealthy 60 || echec "sonde toujours « $(sante_de sonde) » sans base"
@@ -98,6 +112,17 @@ echo "base arrêtée : sonde $(sante_de sonde)"
 compose start base >/dev/null 2>&1
 attendre_sante sonde healthy 60 || echec "la sonde ne redevient pas « healthy »"
 echo "base revenue : sonde $(sante_de sonde)"
+
+etape "Après le redémarrage de la base, l'API répond du premier coup"
+# Les connexions gardées par le pool sont mortes avec l'ancienne base. Le pool doit les
+# écarter et en ouvrir de nouvelles pendant la requête : une seule requête de chaque
+# sorte, sans nouvel essai, doit réussir.
+duree=$(curl -fsS -o /dev/null -w '%{time_total}' "$ADRESSE/api/sites") ||
+  echec "/api/sites échoue après le redémarrage de la base"
+echo "/api/sites : réponse en $duree s"
+curl -fsS -o /dev/null "$ADRESSE/" || echec "la page échoue après le redémarrage de la base"
+curl -fsS "$ADRESSE/sante" || echec "/sante échoue après le redémarrage de la base"
+echo
 
 etape "La sonde s'arrête proprement (SIGTERM)"
 compose stop sonde >/dev/null 2>&1

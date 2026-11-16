@@ -3,21 +3,26 @@
 L'adresse de la base n'est jamais écrite dans le code ni dans la configuration :
 elle vient de la variable d'environnement VIGIE_DATABASE_URL (ou de l'option --base),
 parce qu'elle peut contenir un mot de passe.
+
+Le schéma (les tables) est créé et mis à jour par les migrations : voir migrateur.py.
 """
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from importlib import resources
 from typing import Any
 
 import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 from vigie.config import Site
 from vigie.sonde import Resultat
 
 PERIODE_DISPONIBILITE = timedelta(hours=24)
+# Nom des connexions de l'API, visible par l'exploitant dans pg_stat_activity.
+NOM_CONNEXIONS_API = "vigie-api"
+LOT_PURGE = 10_000  # mesures supprimées par transaction pendant une purge
 # Une mesure est « périmée » quand elle a plus de 3 intervalles de sonde : la sonde a
 # raté au moins deux passages de suite, elle ne tourne probablement plus.
 INTERVALLES_AVANT_PEREMPTION = 3
@@ -79,11 +84,48 @@ def connecter(url: str) -> psycopg.Connection[dict[str, Any]]:
     return psycopg.connect(url, row_factory=dict_row, connect_timeout=5)
 
 
-def initialiser(conn: psycopg.Connection) -> None:
-    """Crée les tables si elles n'existent pas encore."""
-    schema = resources.files("vigie").joinpath("schema.sql").read_text(encoding="utf-8")
-    conn.execute(schema)
-    conn.commit()
+def creer_pool(url: str, taille: int, attente: float) -> ConnectionPool:
+    """Pool de connexions de l'API, fermé : l'application l'ouvre à son démarrage.
+
+    Il garde au moins une connexion ouverte et au plus « taille ». Une requête qui ne
+    trouve pas de connexion libre en « attente » secondes reçoit une erreur (503).
+    """
+
+    def verifier_avant_pret(conn: psycopg.Connection) -> None:
+        """Vérifie une connexion avant de la prêter à une requête."""
+        try:
+            ConnectionPool.check_connection(conn)
+        except psycopg.Error:
+            # Une connexion morte en annonce d'autres : la base a sans doute redémarré.
+            # On vérifie d'un coup toutes celles qui attendent dans le pool. Sinon, la
+            # requête les essaierait une à une en patientant entre chaque (1 s, puis 2 s)
+            # et finirait en 503 avant d'arriver aux connexions neuves.
+            pool.check()
+            raise
+
+    pool = ConnectionPool(
+        url,
+        min_size=1,
+        max_size=taille,
+        timeout=attente,
+        # Pendant une panne de la base, le pool réessaie de se connecter en espaçant ses
+        # essais (1 s, 2 s, 4 s...). Par défaut il insiste 5 minutes : la base revenue,
+        # l'API pouvait rester en erreur des minutes, jusqu'au prochain essai. Il
+        # abandonne désormais au bout du temps d'attente d'une requête, et la requête
+        # suivante relance aussitôt un essai.
+        reconnect_timeout=attente,
+        open=False,
+        name=NOM_CONNEXIONS_API,
+        kwargs={
+            "row_factory": dict_row,
+            "connect_timeout": 5,
+            "application_name": NOM_CONNEXIONS_API,
+        },
+        # Après un redémarrage de la base, une connexion morte est remplacée au lieu de
+        # faire échouer une requête.
+        check=verifier_avant_pret,
+    )
+    return pool
 
 
 def verifier(conn: psycopg.Connection) -> None:
@@ -170,6 +212,26 @@ def derniere_mesure(conn: psycopg.Connection, urls: Sequence[str]) -> datetime |
         "SELECT max(date) AS date FROM sondes WHERE url = ANY(%s)", (list(urls),)
     ).fetchone()
     return ligne["date"] if ligne else None
+
+
+def purger(conn: psycopg.Connection, jours: int, lot: int = LOT_PURGE) -> int:
+    """Supprime les mesures de plus de « jours » jours. Renvoie le nombre supprimé.
+
+    Les incidents sont gardés : ils sont peu nombreux et racontent l'historique du site.
+    La suppression se fait par lots, chacun dans une transaction courte : une très longue
+    transaction retarderait le nettoyage automatique de PostgreSQL (autovacuum).
+    """
+    total = 0
+    while True:
+        supprimees = conn.execute(
+            "DELETE FROM sondes WHERE id IN ("
+            " SELECT id FROM sondes WHERE date < now() - make_interval(days => %s) LIMIT %s)",
+            (jours, lot),
+        ).rowcount
+        conn.commit()
+        total += supprimees
+        if supprimees < lot:
+            return total
 
 
 def historique(conn: psycopg.Connection, url: str, limite: int = 50) -> list[dict[str, Any]]:

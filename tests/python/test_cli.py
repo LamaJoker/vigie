@@ -133,15 +133,7 @@ def test_sonder_avec_une_base_injoignable(serveur, ecrire_config, tmp_path, caps
     assert len(lire_journal(log)) == 1  # le fichier garde quand même la mesure
 
 
-def test_init_db_cree_les_tables(postgres, capsys):
-    with base.connecter(postgres) as conn:
-        conn.execute("DROP TABLE IF EXISTS sondes")
-        conn.commit()
-
-    assert main(["init-db", "--base", postgres]) == 0
-    assert "prête" in capsys.readouterr().out
-    with base.connecter(postgres) as conn:
-        assert conn.execute("SELECT to_regclass('sondes') AS t").fetchone()["t"] == "sondes"
+# « init-db » est devenu un alias de « migrer » au lot 8.3 : voir test_migrations.py.
 
 
 def test_init_db_sans_adresse(monkeypatch, capsys):

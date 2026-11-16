@@ -55,7 +55,7 @@ La page de statut est sur http://localhost:8000. La pile contient trois services
 | `api` | page de statut et API, publiée uniquement sur la machine (127.0.0.1) |
 | `sonde` | teste les sites toutes les 5 minutes et envoie les alertes ; « unhealthy » si elle n'enregistre plus de mesures |
 
-Un service `init-db` crée les tables au démarrage, puis s'arrête. La liste des sites (`config/vigie.toml`) est lue depuis la machine : on la modifie sans reconstruire l'image. `make docker-arreter` arrête tout et garde les données. Pour les effacer aussi : `docker compose down --volumes`.
+Un service `migrations` crée ou met à jour les tables au démarrage (`vigie migrer`), puis s'arrête ; l'API et la sonde attendent qu'il ait réussi. La liste des sites (`config/vigie.toml`) est lue depuis la machine : on la modifie sans reconstruire l'image. `make docker-arreter` arrête tout et garde les données. Pour les effacer aussi : `docker compose down --volumes`.
 
 Les conteneurs tournent sans droits root, avec un système de fichiers en lecture seule et sans aucune capacité Linux.
 
@@ -130,6 +130,9 @@ intervalle = 300  # secondes entre deux passages de « vigie surveiller »
 [affichage]
 fuseau = "Europe/Paris"  # fuseau horaire des heures de la page (UTC par défaut)
 
+[retention]
+jours = 90        # les mesures plus vieilles sont supprimées (les incidents restent)
+
 [[sites]]
 nom = "Wikipédia"
 url = "https://www.wikipedia.org"
@@ -143,10 +146,16 @@ Une mesure est **périmée** quand elle a plus de 3 intervalles, soit 15 minutes
 
 `vigie sante-sonde` répond `0` si une mesure récente existe en base, `1` sinon. C'est le contrôle de santé du conteneur de la sonde : une sonde qui tourne mais n'enregistre plus rien, par exemple parce que la base est injoignable, apparaît « unhealthy » dans `make docker-etat`.
 
+### La base de données dans la durée
+
+- **Migrations.** Le schéma évolue par fichiers numérotés ([src/vigie/migrations/](src/vigie/migrations/)). `vigie migrer` applique ceux qui manquent, chacun dans sa transaction, et note dans la table `migrations` ce qui est fait. On peut le relancer sans risque, et plusieurs lancements simultanés ne se marchent pas dessus. Une base créée par une ancienne version de Vigie est mise à niveau comme une base vide. L'ancien nom, `vigie init-db`, reste accepté. Pourquoi un migrateur maison : [décision 0006](docs/decisions/0006-migrateur-maison.md).
+- **Rétention.** `vigie surveiller` supprime une fois par jour les mesures plus vieilles que `[retention] jours` (90 par défaut). `vigie purger` fait la même chose à la demande. Les incidents sont toujours gardés.
+- **Pool de connexions.** L'API garde au plus 5 connexions ouvertes vers la base et les prête aux requêtes, au lieu d'en ouvrir une par requête. Ses connexions s'appellent `vigie-api` dans `pg_stat_activity`.
+
 ### Vérifier le code
 
 ```bash
-make tests          # 210 tests Python (pytest) et 17 tests Bash (bats)
+make tests          # 261 tests Python (pytest) et 17 tests Bash (bats)
 make lint           # style et qualité : ruff pour Python, ShellCheck pour Bash
 make lint-docker    # Dockerfile (hadolint) et compose.yaml
 make tests-docker   # essai de bout en bout de la pile, dans un projet jetable
@@ -206,7 +215,7 @@ vigie/
 ├── pyproject.toml    description du paquet Python et de ses dépendances
 ├── .env.exemple      modèle du fichier des secrets (.env, jamais commité)
 ├── config/           configuration de la sonde (sites, délais)
-├── src/vigie/        le code Python : sonde, base de données, alertes, API, page de statut
+├── src/vigie/        le code Python : sonde, base de données et ses migrations, alertes, API, page de statut
 ├── sonde/            la version Bash et son installation cron
 ├── scripts/          outils du dépôt (vérification des liens de la documentation)
 ├── tests/

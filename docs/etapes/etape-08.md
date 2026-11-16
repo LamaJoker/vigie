@@ -1,7 +1,7 @@
 # Étape 8 : durcissement
 
-**Date :** à partir du 10 novembre 2026 (lot 8.1 : 10-11 novembre ; lot 8.2 : 16 novembre)
-**Statut :** en cours (lots 8.1 et 8.2 livrés)
+**Date :** à partir du 10 novembre 2026 (lot 8.1 : 10-11 novembre ; lots 8.2 et 8.3 : 16 novembre)
+**Statut :** en cours (lots 8.1 à 8.3 livrés)
 **Lots :** [#9](https://github.com/LamaJoker/vigie/issues/9) 8.1 · [#10](https://github.com/LamaJoker/vigie/issues/10) 8.2 · [#11](https://github.com/LamaJoker/vigie/issues/11) 8.3 · [#12](https://github.com/LamaJoker/vigie/issues/12) 8.4 · [#13](https://github.com/LamaJoker/vigie/issues/13) 8.5 · [#14](https://github.com/LamaJoker/vigie/issues/14) 8.6
 
 ## Objectif
@@ -267,6 +267,168 @@ Ouvre ensuite http://localhost:8000 : en bas de page, le fuseau `Europe/Paris` e
    <details><summary>Réponse</summary>
 
    Pour ne coïncider avec aucune machine de test. Avec `Europe/Paris`, un code qui affiche l'heure de la machine passerait sur ce poste (réglé sur Paris) sans rien prouver.
+   </details>
+
+## Lot 8.3 : une base qui dure
+
+### Le problème
+
+Trois défauts trouvés à la revue du 10/11 :
+
+- **Le schéma de la base n'avait pas de versions.** `schema.sql`, rejoué à chaque démarrage avec `IF NOT EXISTS`, ne savait que créer. Il ne pouvait ni modifier une colonne ni dire dans quel état se trouvait une base. Le lot 8.1 l'avait déjà poussé à sa limite pour ajouter une colonne.
+- **La table des mesures grossissait sans limite** : une ligne par site toutes les 5 minutes, soit 1 440 lignes par jour pour 5 sites, pour toujours.
+- **L'API ouvrait une connexion à la base pour chaque requête.** Ouvrir une connexion PostgreSQL coûte plusieurs millisecondes, et rien ne limitait leur nombre.
+
+### Ce qui a été fait
+
+**1. Des migrations numérotées.** Le schéma évolue désormais par fichiers SQL numérotés, dans [src/vigie/migrations/](../../src/vigie/migrations/) :
+
+| Migration | Contenu |
+|---|---|
+| `0001_initial` | les tables `sondes` et `incidents` des versions 0.4 et 0.5 |
+| `0002_motif_fin_incidents` | la colonne `motif_fin` ajoutée au lot 8.1 |
+| `0003_index_date_sondes` | un index sur la date des mesures, pour la purge |
+
+`vigie migrer` applique celles qui manquent, **chacune dans sa propre transaction**, et note dans la table `migrations` le numéro, le nom, la date et l'**empreinte** (SHA-256) de chaque fichier appliqué. Si un fichier déjà appliqué a changé, il refuse de continuer : on n'édite jamais une migration appliquée, on en écrit une nouvelle. `vigie init-db` reste accepté comme ancien nom, et le service Compose `init-db` devient `migrations`.
+
+*Et les bases déjà créées par l'ancien `schema.sql` ?* Les deux premières migrations reprennent l'ancien schéma avec `IF NOT EXISTS`. Une ancienne base les passe sans erreur, puis reçoit la troisième comme une base neuve. Pourquoi un migrateur maison plutôt qu'Alembic : [décision 0006](../decisions/0006-migrateur-maison.md).
+
+**2. Un verrou contre les lancements simultanés.** À l'étape 12, plusieurs copies de l'API démarreront en même temps, et chacune lancera les migrations. `vigie migrer` prend d'abord un **verrou consultatif** PostgreSQL (`pg_advisory_lock`) : le deuxième lancement attend que le premier ait fini, puis constate qu'il ne reste rien à faire. Le verrou est lié à la connexion : si le programme meurt en route, PostgreSQL le rend tout seul.
+
+**3. La rétention des mesures.** `[retention] jours = 90` dans la configuration. `vigie surveiller` supprime **une fois par jour** les mesures plus vieilles, dès son premier passage. `vigie purger` fait la même chose à la demande. Les **incidents sont gardés** : ils sont peu nombreux et racontent l'historique des pannes. La suppression se fait par lots de 10 000 lignes, chacun dans une transaction courte. La purge attend un passage où la base répond, et réessaie au passage suivant si elle échoue.
+
+**4. Un pool de connexions dans l'API.** L'API garde quelques connexions ouvertes, **5 au plus**, et les prête aux requêtes. Le pool s'ouvre au démarrage de l'application et se ferme à son arrêt. Ses connexions s'appellent `vigie-api` dans `pg_stat_activity`, la vue de PostgreSQL qui liste les connexions en cours : l'exploitant voit tout de suite qui les tient.
+
+### Les tests
+
+**54 nouveaux tests** (261 au total, 99 % du code couvert ; 100 % de chaque module sauf le petit point d'entrée `__main__.py`). Trois anciens tests de `schema.sql` disparaissent, remplacés par ceux des migrations.
+
+Lancés contre le code d'avant le lot, **les 53 premiers échouent tous** : 27 en échec ou en erreur, et les 26 de `test_migrations.py` ne peuvent même pas se charger, puisque le module `migrateur` n'existait pas. Le 54e, et le renforcement d'un autre, viennent de l'essai de bout en bout (voir plus bas). Chacun a été vu échouer 3 fois sur 3 avant sa correction.
+
+Ce que vérifient les tests des migrations, toujours sur un vrai PostgreSQL :
+
+- une base vide reçoit tout le schéma, et relancer ne change rien, pas même les dates ;
+- une base créée par **chacune des trois anciennes versions** de `schema.sql` (0.4, 0.5 et lot 8.1, conservées dans `tests/python/schemas-historiques/`) arrive exactement au même schéma qu'une base neuve, colonnes, contraintes et index compris, en gardant ses données ;
+- 4 lancements simultanés réussissent tous, et chaque migration n'est appliquée qu'une fois ; pendant qu'un autre tient le verrou, `migrer` attend sans rien toucher ;
+- deux `vigie migrer` lancés en même temps, comme deux vrais programmes, réussissent tous les deux ;
+- une migration qui échoue est annulée en entier, les précédentes restent, et le verrou est rendu ;
+- une migration modifiée après application est refusée ; une base en avance sur le code est signalée.
+
+### Deux défauts du pool, trouvés par l'essai de bout en bout
+
+Tous les tests passaient. L'essai dans Docker, lui, a échoué : **après le redémarrage de la base, la première requête à l'API recevait une erreur 503.** Avant le lot, sans pool, ce cas ne se posait pas : chaque requête ouvrait une connexion neuve.
+
+**Première piste.** Pendant une panne, le pool réessaie de se connecter en espaçant ses essais : 1 s, 2 s, 4 s, 8 s… pendant 5 minutes par défaut. La base revenue, l'API pouvait donc rester en erreur jusqu'au prochain essai, parfois plusieurs minutes. Un test l'a reproduit (une base qui n'existe pas, puis qu'on crée) : **3 échecs sur 3**. Correction : le pool abandonne au bout du temps d'attente d'une requête, et la requête suivante relance aussitôt un essai. Le test passe… mais l'essai Docker échouait encore.
+
+**La vraie cause, trouvée dans les journaux horodatés.** Pendant la panne, l'API n'avait tenté **aucune** connexion. Au retour de la base, le pool tenait 5 connexions mortes en réserve. Avant de prêter une connexion, il la vérifie, et s'il tombe sur une connexion morte, il **patiente avant d'essayer la suivante** (1 s, puis 2 s), pour ne pas tourner en boucle. Avec 3 s d'attente au plus, la requête n'atteignait jamais les connexions neuves. Un test l'a reproduit (5 connexions en réserve, toutes coupées) : **3 échecs sur 3**. Correction : à la première connexion morte, le pool vérifie d'un coup toutes celles qui attendent en réserve.
+
+Résultat : l'essai Docker passe **3 fois sur 3**, et `/api/sites` répond du premier coup après le redémarrage de la base, en 0,03 s.
+
+**Leçons :** des tests unitaires ne remplacent pas un essai dans des conditions réelles, ici une vraie base qu'on arrête. Et une première explication plausible peut être juste sans être **la** cause : seules les mesures horodatées l'ont montré.
+
+### Essais réels
+
+**Mise à niveau d'une base créée par l'image 0.5 publiée** (`ghcr.io/lamajoker/vigie:e77e6d6`), dans des conteneurs jetables :
+
+```
+=== 1. Base créée par l'image publiée ghcr.io/lamajoker/vigie:e77e6d6 (vigie 0.5.0)
+Base de données prête.
+=== 2. Mise à niveau par l'image du lot 8.3
+Migration appliquée : 0001_initial
+Migration appliquée : 0002_motif_fin_incidents
+Migration appliquée : 0003_index_date_sondes
+Base de données à jour (version 3).
+=== 4. Relance sur la base mise à niveau
+Base de données déjà à jour (version 3).
+=== 5. Comparaison des schémas (pg_dump --schema-only)
+schémas identiques (73 lignes)
+mesure gardée : 1 ligne(s) dans sondes
+```
+
+**Deux `migrer` lancés en même temps** sur une base vide, dans deux conteneurs : l'un applique les trois migrations, l'autre attend puis répond « Base de données déjà à jour (version 3) ». La table `migrations` contient 3 lignes, pas 6.
+
+**La base de développement de ce poste**, créée à l'étape 4 par l'ancien `schema.sql`, a été mise à niveau le 16/11 par `make db-demarrer` : 3 migrations notées, et ses 30 mesures du 9 au 16 novembre conservées.
+
+**Connexions à la base sous 50 requêtes simultanées**, chaque lecture étant ralentie à 0,1 s pour que les requêtes se chevauchent vraiment :
+
+| | Connexions simultanées au plus | Durée des 50 requêtes |
+|---|---|---|
+| Avant le lot (une connexion par requête) | 40 | 0,48 s |
+| Avec le pool | 5 | 1,23 s |
+
+Avant le lot, seul le nombre de fils d'exécution du serveur (40) limitait le nombre de connexions. Avec le pool, il ne dépasse jamais 5. La contrepartie est visible : avec des lectures artificiellement lentes, les requêtes font la queue. En temps normal, une lecture prend quelques millisecondes et la file ne se voit pas. L'essai Docker le vérifie aussi avec 50 vraies requêtes `curl` simultanées : 5 connexions ouvertes après la rafale.
+
+### Limites connues
+
+- Pas de retour en arrière automatique d'une migration : on corrige par une nouvelle migration.
+- La migration 0003 crée son index sans l'option `CONCURRENTLY`. Sur une très grosse table, cela bloquerait les écritures le temps de la création. Ici, avec 90 jours de rétention et 5 sites, la table ne dépasse pas 130 000 lignes.
+- La taille du pool (5) est fixe dans le code. Avec plusieurs copies de l'API (étape 12), le total, nombre de copies × 5, devra rester sous la limite de PostgreSQL (100 connexions par défaut).
+- Pendant une panne de la base, chaque essai de reconnexion du pool écrit un avertissement dans le journal de l'API.
+- La rétention vaut pour tous les sites à la fois.
+
+### Vocabulaire du lot
+
+| Terme | Sens |
+|---|---|
+| Migration | Fichier qui fait évoluer le schéma de la base d'une étape, appliqué une seule fois et dans l'ordre |
+| Empreinte (*hash*) | Résumé d'un fichier calculé par une fonction comme SHA-256 : si le fichier change d'un seul caractère, l'empreinte change |
+| Verrou consultatif (*advisory lock*) | Verrou nommé par un nombre, que les programmes s'accordent à respecter ; PostgreSQL ne le pose sur aucune table |
+| Rétention | Durée pendant laquelle on garde des données avant de les supprimer |
+| Pool de connexions | Réserve de connexions ouvertes, prêtées aux requêtes puis rendues, au lieu d'en ouvrir une à chaque fois |
+| `pg_stat_activity` | Vue de PostgreSQL qui liste les connexions en cours et ce qu'elles font |
+| Attente exponentielle (*backoff*) | Espacer de plus en plus ses nouveaux essais (1 s, 2 s, 4 s…) pour ne pas harceler un service en panne |
+
+### Parcours du superviseur
+
+Environ 30 minutes.
+
+#### À lancer
+
+```bash
+cd ~/vigie && git switch main && git pull
+make installer && make tests
+make db-demarrer             # met aussi à niveau ta base de développement
+psql -h "$PWD/.pgdata" -p 5433 -U vigie -d vigie -c 'SELECT * FROM migrations'
+```
+
+#### À casser
+
+1. Ajoute une ligne de commentaire, par exemple `-- essai`, à la fin de `src/vigie/migrations/0003_index_date_sondes.sql`.
+2. Lance `.venv/bin/vigie migrer --base "postgresql://vigie@/vigie?host=$PWD/.pgdata&port=5433"`, puis `echo $?` : la migration modifiée est refusée, avec le code 2.
+3. Remets le fichier en état : `git checkout src/vigie/migrations/`, puis `make db-arreter`.
+4. Lance la pile : `make docker-demarrer`. Envoie 50 requêtes en même temps : `seq 50 | xargs -P 50 -I{} curl -s -o /dev/null http://localhost:8000/api/sites`. Compte les connexions de l'API : `docker compose exec base psql -U vigie -d vigie -c "SELECT count(*) FROM pg_stat_activity WHERE application_name = 'vigie-api'"`. Il y en a 5 au plus.
+5. Lance deux migrations en même temps : `docker compose run --rm migrations & docker compose run --rm migrations & wait`. Les deux réussissent. Puis `make docker-arreter`.
+
+#### Cinq questions
+
+1. Pourquoi numéroter les migrations et noter dans la base celles qui sont appliquées, plutôt que rejouer un schéma complet ?
+   <details><summary>Réponse</summary>
+
+   Un schéma rejoué avec `IF NOT EXISTS` ne sait que créer : il ne peut ni modifier une colonne, ni dire où en est une base. Avec des migrations numérotées et la table `migrations`, chaque base sait exactement quelles étapes elle a reçues, et chacune n'est appliquée qu'une fois. Voir `src/vigie/migrateur.py`.
+   </details>
+
+2. Que se passe-t-il si deux conteneurs lancent `vigie migrer` en même temps ?
+   <details><summary>Réponse</summary>
+
+   Le premier prend le verrou consultatif `pg_advisory_lock`. Le second attend, puis constate que tout est déjà appliqué et répond « déjà à jour ». Sans verrou, les deux pourraient appliquer la même migration et l'un échouerait. Voir `CLE_VERROU` dans `src/vigie/migrateur.py`.
+   </details>
+
+3. Pourquoi refuser de continuer si une migration déjà appliquée a été modifiée ?
+   <details><summary>Réponse</summary>
+
+   Les bases qui l'ont déjà reçue ne verront jamais la modification : elles divergeraient en silence de celles créées après. L'empreinte SHA-256 de chaque fichier, notée à l'application, permet de le détecter. La bonne pratique : écrire une nouvelle migration.
+   </details>
+
+4. Pourquoi supprimer les vieilles mesures par lots, et pourquoi garder les incidents ?
+   <details><summary>Réponse</summary>
+
+   Une très longue transaction retarde le nettoyage automatique de PostgreSQL (autovacuum) sur toute la base : des lots de 10 000 lignes gardent chaque transaction courte. Les incidents, eux, sont peu nombreux et racontent l'historique des pannes : on les garde. Voir `purger` dans `src/vigie/base.py`.
+   </details>
+
+5. À quoi sert un pool de connexions, et quel piège l'essai de bout en bout a-t-il révélé ?
+   <details><summary>Réponse</summary>
+
+   Il évite d'ouvrir une connexion à chaque requête et borne leur nombre : 5 au lieu de 40 sous 50 requêtes simultanées. Le piège : après un redémarrage de la base, ses connexions en réserve sont mortes. Le pool les vérifiait une à une en patientant entre chaque, et la requête finissait en 503. Désormais, à la première connexion morte, il les vérifie toutes d'un coup. Voir `creer_pool` dans `src/vigie/base.py`.
    </details>
 
 ## Temps de supervision

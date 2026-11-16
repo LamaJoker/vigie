@@ -74,7 +74,7 @@ db-demarrer: installer
 	@$(PGBIN)/psql -h $(PGDATA) -p $(PGPORT) -U vigie -d postgres -tAc \
 		"SELECT 1 FROM pg_database WHERE datname = 'vigie'" | grep -q 1 || \
 		$(PGBIN)/createdb -h $(PGDATA) -p $(PGPORT) -U vigie vigie
-	@VIGIE_DATABASE_URL='$(BASE_DEV)' $(BIN)/vigie init-db
+	@VIGIE_DATABASE_URL='$(BASE_DEV)' $(BIN)/vigie migrer
 
 db-arreter:
 	@$(PGBIN)/pg_ctl -D $(PGDATA) status >/dev/null && $(PGBIN)/pg_ctl -D $(PGDATA) -m fast stop || \

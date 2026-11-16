@@ -21,12 +21,6 @@ def conn(base_vide):
         yield connexion
 
 
-def test_initialiser_peut_etre_rejoue(conn):
-    base.initialiser(conn)
-    base.initialiser(conn)
-    assert conn.execute("SELECT count(*) AS n FROM sondes").fetchone()["n"] == 0
-
-
 def test_enregistrer_renvoie_le_nombre_de_lignes(conn):
     assert base.enregistrer(conn, [resultat(A), resultat(B)]) == 2
 
