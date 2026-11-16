@@ -8,13 +8,26 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 PROJET=vigie-essai
 export VIGIE_PORT=18080
-export VIGIE_INTERVALLE=5
+# Mesures périmées au bout de 3 x 10 = 30 s. Assez large même si un site met ses 10 s
+# de délai maximal à répondre (5 s laissait trop peu de marge : essai instable).
+export VIGIE_INTERVALLE=10
+export VIGIE_SANTE_INTERVALLE=3s  # contrôle de santé de la sonde rapide, pour l'essai
+export VIGIE_SANTE_DEMARRAGE=5s
 VIGIE_MOT_DE_PASSE_BASE=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 export VIGIE_MOT_DE_PASSE_BASE
 ADRESSE="http://127.0.0.1:$VIGIE_PORT"
 
 compose() { docker compose --project-name "$PROJET" "$@"; }
 etape() { printf '\n=== %s\n' "$*"; }
+sante_de() { docker inspect --format '{{.State.Health.Status}}' "$(compose ps -q "$1")" 2>/dev/null; }
+attendre_sante() { # attendre_sante SERVICE ETAT SECONDES
+  local _
+  for _ in $(seq "$3"); do
+    [[ $(sante_de "$1") == "$2" ]] && return 0
+    sleep 1
+  done
+  return 1
+}
 echec() {
   echo "ÉCHEC : $*" >&2
   compose ps -a >&2 || true
@@ -47,9 +60,18 @@ done
 [[ $mesures -gt 0 ]] || echec "aucune mesure enregistrée par la sonde"
 echo "$mesures site(s) mesuré(s)"
 
-etape "La page de statut s'affiche"
-curl -fsS "$ADRESSE/" | grep -q "<title>Vigie" || echec "page de statut absente"
-echo "ok"
+etape "La page de statut s'affiche, à l'heure de Paris"
+avant=$(TZ=Europe/Paris date +%H:%M)
+page=$(curl -fsS "$ADRESSE/") || echec "page de statut absente"
+apres=$(TZ=Europe/Paris date +%H:%M)  # au cas où la minute change pendant la requête
+grep -q "<title>Vigie" <<<"$page" || echec "page de statut absente"
+grep -q "fuseau Europe/Paris" <<<"$page" || echec "la page ne dit pas son fuseau horaire"
+grep -q -e "$avant" -e "$apres" <<<"$page" || echec "la page n'affiche pas l'heure de Paris ($avant)"
+echo "fuseau annoncé, heure de Paris ($avant) affichée"
+
+etape "La sonde est en bonne santé"
+attendre_sante sonde healthy 40 || echec "la sonde n'est pas « healthy » (état : $(sante_de sonde))"
+compose exec -T sonde vigie sante-sonde
 
 etape "Les conteneurs ne tournent pas en root"
 for service in api sonde; do
@@ -69,10 +91,32 @@ port_base=$(compose port base 5432 2>/dev/null || true)
 [[ -z $port_base || $port_base == ":0" ]] || echec "le port de la base est publié : $port_base"
 echo "aucun port publié"
 
+etape "Une sonde qui n'enregistre plus rien devient « unhealthy »"
+compose stop base >/dev/null 2>&1
+attendre_sante sonde unhealthy 60 || echec "sonde toujours « $(sante_de sonde) » sans base"
+echo "base arrêtée : sonde $(sante_de sonde)"
+compose start base >/dev/null 2>&1
+attendre_sante sonde healthy 60 || echec "la sonde ne redevient pas « healthy »"
+echo "base revenue : sonde $(sante_de sonde)"
+
 etape "La sonde s'arrête proprement (SIGTERM)"
 compose stop sonde >/dev/null 2>&1
 compose logs sonde | grep -q "SIGTERM reçu" || echec "la sonde n'a pas reçu SIGTERM"
 echo "ok"
+
+etape "Sonde arrêtée : la page signale des mesures périmées"
+perime=false
+for _ in $(seq 60); do
+  if curl -fsS "$ADRESSE/api/sites" | python3 -c 'import json, sys; sys.exit(0 if all(s["perime"] for s in json.load(sys.stdin)) else 1)'; then
+    perime=true
+    break
+  fi
+  sleep 1
+done
+[[ $perime == true ]] || echec "les mesures ne sont jamais dites périmées"
+curl -fsS "$ADRESSE/" | grep -q "Mesures périmées" || echec "pas de bandeau « Mesures périmées »"
+curl -fsS "$ADRESSE/" | grep -q "Tous les sites répondent" && echec "bandeau vert malgré des mesures périmées"
+echo "bandeau « Mesures périmées » affiché, plus de bandeau vert"
 
 etape "Taille de l'image"
 docker image ls vigie:local --format '{{.Repository}}:{{.Tag}}  {{.Size}}'

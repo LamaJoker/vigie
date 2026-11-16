@@ -156,7 +156,8 @@ def test_une_ecriture_impossible_du_journal_est_signalee(serveur, ecrire_config,
 
 
 def test_intervalle_par_variable_d_environnement(serveur, ecrire_config, tmp_path, monkeypatch):
-    monkeypatch.setenv("VIGIE_INTERVALLE", "0")
+    # 0 n'est plus accepté depuis le lot 8.2 : l'intervalle sert aussi à juger la fraîcheur.
+    monkeypatch.setenv("VIGIE_INTERVALLE", "0.01")
     config = ecrire_config([f"{serveur}/200"])
     code, log = surveiller(config, tmp_path, "--passages", "2")
     assert code == 0

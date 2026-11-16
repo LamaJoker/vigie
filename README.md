@@ -53,7 +53,7 @@ La page de statut est sur http://localhost:8000. La pile contient trois services
 |---|---|
 | `base` | PostgreSQL 18, sans port publié : seuls les autres conteneurs la joignent |
 | `api` | page de statut et API, publiée uniquement sur la machine (127.0.0.1) |
-| `sonde` | teste les sites toutes les 5 minutes (`VIGIE_INTERVALLE`) et envoie les alertes |
+| `sonde` | teste les sites toutes les 5 minutes et envoie les alertes ; « unhealthy » si elle n'enregistre plus de mesures |
 
 Un service `init-db` crée les tables au démarrage, puis s'arrête. La liste des sites (`config/vigie.toml`) est lue depuis la machine : on la modifie sans reconstruire l'image. `make docker-arreter` arrête tout et garde les données. Pour les effacer aussi : `docker compose down --volumes`.
 
@@ -78,7 +78,7 @@ La base de développement n'ouvre aucun port réseau : elle n'est joignable que 
 | Adresse | Contenu |
 |---|---|
 | `/` | page de statut |
-| `/api/sites` | état de chaque site, en JSON |
+| `/api/sites` | état de chaque site, en JSON, avec l'âge de sa dernière mesure (`age_secondes`) et si elle est périmée (`perime`) |
 | `/api/sites/historique?url=…&limite=50` | derniers résultats d'un site |
 | `/api/incidents?limite=20` | derniers incidents (pannes), en cours ou terminés |
 | `/sante` | l'application et sa base répondent-elles ? (code 503 si la base est injoignable) |
@@ -123,20 +123,30 @@ Les sites et les réglages sont dans [config/vigie.toml](config/vigie.toml) :
 
 ```toml
 [sonde]
-delai = 10       # secondes accordées à chaque site, redirections comprises
-paralleles = 10  # nombre de sites testés en même temps
+delai = 10        # secondes accordées à chaque site, redirections comprises
+paralleles = 10   # nombre de sites testés en même temps
+intervalle = 300  # secondes entre deux passages de « vigie surveiller »
+
+[affichage]
+fuseau = "Europe/Paris"  # fuseau horaire des heures de la page (UTC par défaut)
 
 [[sites]]
 nom = "Wikipédia"
 url = "https://www.wikipedia.org"
 ```
 
-Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemins par défaut, tout comme les options `--config` et `--log` de `vigie sonder`.
+Les variables d'environnement `VIGIE_CONFIG` et `VIGIE_LOG` remplacent les chemins par défaut, tout comme les options `--config` et `--log` de `vigie sonder`. `VIGIE_INTERVALLE` remplace l'intervalle du fichier.
+
+### Mesures périmées et santé de la sonde
+
+Une mesure est **périmée** quand elle a plus de 3 intervalles, soit 15 minutes avec le réglage par défaut : la sonde a manqué au moins deux passages, elle ne tourne probablement plus. La page le signale par un bandeau orange (« Mesures périmées : dernière mesure il y a 47 min ») au lieu d'afficher un bandeau vert trompeur.
+
+`vigie sante-sonde` répond `0` si une mesure récente existe en base, `1` sinon. C'est le contrôle de santé du conteneur de la sonde : une sonde qui tourne mais n'enregistre plus rien, par exemple parce que la base est injoignable, apparaît « unhealthy » dans `make docker-etat`.
 
 ### Vérifier le code
 
 ```bash
-make tests          # 138 tests Python (pytest) et 17 tests Bash (bats)
+make tests          # 210 tests Python (pytest) et 17 tests Bash (bats)
 make lint           # style et qualité : ruff pour Python, ShellCheck pour Bash
 make lint-docker    # Dockerfile (hadolint) et compose.yaml
 make tests-docker   # essai de bout en bout de la pile, dans un projet jetable

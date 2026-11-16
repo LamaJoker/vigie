@@ -14,6 +14,9 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.32",
     "jinja2>=3.1,<4",
+    # base des fuseaux horaires : la page affiche l'heure locale même dans une image
+    # qui n'en a pas
+    "tzdata>=2024.1",
 ]
 
 [project.optional-dependencies]
