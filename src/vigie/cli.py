@@ -3,7 +3,8 @@
     vigie sonder         [--config FICHIER] [--log FICHIER] [--base URL]
     vigie surveiller     [mêmes options] [--intervalle SECONDES] [--passages N]
     vigie sante-sonde    [--config FICHIER] [--base URL]
-    vigie init-db        [--base URL]
+    vigie migrer         [--base URL]          (ancien nom, toujours accepté : init-db)
+    vigie purger         [--config FICHIER] [--base URL]
     vigie serveur        [--config FICHIER] [--base URL] [--hote ADRESSE] [--port PORT]
     vigie tester-alerte
 
@@ -25,6 +26,7 @@ import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import Event
+from time import monotonic
 
 from vigie import __version__
 from vigie.config import Configuration, ErreurConfiguration, charger
@@ -34,6 +36,7 @@ from vigie.sonde import Resultat, sonder_tous
 CONFIG_PAR_DEFAUT = "config/vigie.toml"
 VARIABLE_WEBHOOK = "VIGIE_DISCORD_WEBHOOK"
 ERREURS_IMPREVUES_MAX = 5  # erreurs imprévues de suite avant que « surveiller » s'arrête
+PERIODE_PURGE = 24 * 3600  # secondes entre deux purges des vieilles mesures par « surveiller »
 
 
 def log_par_defaut() -> Path:
@@ -101,7 +104,17 @@ def construire_analyseur() -> argparse.ArgumentParser:
     )
 
     commandes.add_parser(
-        "init-db", parents=[option_base], help="créer les tables de la base de données"
+        "migrer",
+        aliases=["init-db"],
+        parents=[option_base],
+        help="créer ou mettre à jour les tables de la base (migrations)",
+    )
+
+    commandes.add_parser(
+        "purger",
+        parents=[option_config, option_base],
+        help="supprimer les mesures plus vieilles que retention.jours (surveiller le fait"
+        " une fois par jour)",
     )
 
     serveur = commandes.add_parser(
@@ -243,6 +256,7 @@ def commande_surveiller(
     try:
         numero = 0
         imprevues_de_suite = 0
+        derniere_purge: float | None = None
         while not arret.is_set():
             numero += 1
             heure = datetime.now().astimezone().strftime("%H:%M:%S")
@@ -251,7 +265,13 @@ def commande_surveiller(
             # résoudre. Une erreur imprévue non plus, sauf si elle se répète : on s'arrête
             # alors en erreur, pour que l'orchestrateur (Docker, Kubernetes) relance la sonde.
             try:
-                commande_sonder(config_chemin, log, url_base)
+                code = commande_sonder(config_chemin, log, url_base)
+                # Code 2 : la base vient d'être injoignable, c'est déjà signalé. La purge
+                # attendra un passage où elle répond.
+                if url_base and code != 2:
+                    derniere_purge = purge_quotidienne(
+                        url_base, config.retention_jours, derniere_purge
+                    )
                 imprevues_de_suite = 0
             except Exception:
                 imprevues_de_suite += 1
@@ -313,19 +333,73 @@ def commande_sante_sonde(config_chemin: Path, url_base: str | None) -> int:
     return 0
 
 
-def commande_init_db(url_base: str | None) -> int:
-    if not url_base:
-        return erreur("adresse de la base manquante : --base ou VIGIE_DATABASE_URL")
+def purge_quotidienne(url_base: str, jours: int, derniere: float | None) -> float | None:
+    """Purge les vieilles mesures si la dernière purge réussie date d'au moins un jour.
+
+    Renvoie le moment de la dernière purge réussie. L'horloge « monotone » ne recule
+    jamais, même si l'heure du système change : un jour mesuré avec elle dure vraiment un jour.
+    """
+    maintenant = monotonic()
+    if derniere is not None and maintenant - derniere < PERIODE_PURGE:
+        return derniere
+    if purger_en_base(url_base, jours) is None:
+        return derniere  # échec : nouvel essai au prochain passage
+    return maintenant
+
+
+def purger_en_base(url_base: str, jours: int) -> int | None:
+    """Supprime les mesures trop vieilles. Renvoie leur nombre, ou None en cas d'échec."""
     import psycopg
 
     from vigie import base
 
     try:
         with base.connecter(url_base) as conn:
-            base.initialiser(conn)
+            supprimees = base.purger(conn, jours)
     except psycopg.Error as probleme:
-        return erreur(f"initialisation de la base impossible : {probleme}")
-    print("Base de données prête.")
+        erreur(f"purge des anciennes mesures impossible : {probleme}")
+        return None
+    pluriel = "s" if supprimees > 1 else ""
+    print(f"Purge des mesures de plus de {jours} jours : {supprimees} supprimée{pluriel}.")
+    return supprimees
+
+
+def commande_purger(config_chemin: Path, url_base: str | None) -> int:
+    if not url_base:
+        return erreur("adresse de la base manquante : --base ou VIGIE_DATABASE_URL")
+    config = lire_config(config_chemin)
+    if config is None:
+        return 2
+    return 0 if purger_en_base(url_base, config.retention_jours) is not None else 2
+
+
+def commande_migrer(url_base: str | None) -> int:
+    """Crée ou met à jour les tables. Plusieurs lancements simultanés sont sans risque."""
+    if not url_base:
+        return erreur("adresse de la base manquante : --base ou VIGIE_DATABASE_URL")
+    import psycopg
+
+    from vigie import base, migrateur
+
+    try:
+        with base.connecter(url_base) as conn:
+            bilan = migrateur.migrer(conn)
+    except (migrateur.ErreurMigration, psycopg.Error) as probleme:
+        return erreur(f"migration impossible : {probleme}")
+
+    for migration in bilan.appliquees:
+        print(f"Migration appliquée : {migration.nom}")
+    if bilan.inconnues:
+        # Cas d'un retour à une version précédente de Vigie : ce n'est pas bloquant tant
+        # que les migrations restent compatibles avec le code d'avant (voir la décision 0006).
+        versions = ", ".join(str(version) for version in bilan.inconnues)
+        print(
+            f"vigie: attention, migration(s) inconnue(s) de cette version de Vigie : {versions}."
+            " La base a été mise à jour par une version plus récente.",
+            file=sys.stderr,
+        )
+    etat = "à jour" if bilan.appliquees else "déjà à jour"
+    print(f"Base de données {etat} (version {bilan.version}).")
     return 0
 
 
@@ -382,8 +456,10 @@ def main(argv: list[str] | None = None) -> int:
             arguments.intervalle,
             arguments.passages,
         )
-    if arguments.commande == "init-db":
-        return commande_init_db(arguments.base)
+    if arguments.commande in ("migrer", "init-db"):
+        return commande_migrer(arguments.base)
+    if arguments.commande == "purger":
+        return commande_purger(arguments.config, arguments.base)
     if arguments.commande == "tester-alerte":
         return commande_tester_alerte()
     return commande_serveur(arguments.config, arguments.base, arguments.hote, arguments.port)

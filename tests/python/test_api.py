@@ -18,7 +18,9 @@ BASE_INJOIGNABLE = "postgresql://vigie@/aucune?host=/dossier/inexistant&port=1"
 
 @pytest.fixture
 def client(base_vide):
-    return TestClient(creer_app(CONFIG, base_vide))
+    # « with » démarre l'application, ce qui ouvre son pool de connexions (lot 8.3).
+    with TestClient(creer_app(CONFIG, base_vide)) as client:
+        yield client
 
 
 @pytest.fixture
@@ -37,8 +39,8 @@ def test_sante(client):
 
 
 def test_sante_quand_la_base_est_injoignable():
-    client = TestClient(creer_app(CONFIG, BASE_INJOIGNABLE))
-    reponse = client.get("/sante")
+    with TestClient(creer_app(CONFIG, BASE_INJOIGNABLE, attente=0.5)) as client:
+        reponse = client.get("/sante")
     assert reponse.status_code == 503
     assert reponse.json()["base"] == "injoignable"
 
@@ -56,8 +58,8 @@ def test_api_sites(client, remplir):
 
 
 def test_api_quand_la_base_est_injoignable():
-    client = TestClient(creer_app(CONFIG, BASE_INJOIGNABLE))
-    reponse = client.get("/api/sites")
+    with TestClient(creer_app(CONFIG, BASE_INJOIGNABLE, attente=0.5)) as client:
+        reponse = client.get("/api/sites")
     assert reponse.status_code == 503
     assert "injoignable" in reponse.json()["detail"]
 
@@ -106,7 +108,8 @@ def test_la_page_protege_contre_l_injection_html(remplir, base_vide):
     # Un nom piégé dans la configuration ne doit jamais devenir du code dans la page.
     config = Configuration(sites=(Site("<script>alert(1)</script>", A),))
     remplir(resultat(A))
-    page = TestClient(creer_app(config, base_vide)).get("/").text
+    with TestClient(creer_app(config, base_vide)) as client:
+        page = client.get("/").text
     assert "<script>alert(1)</script>" not in page
     assert "&lt;script&gt;" in page
 

@@ -126,11 +126,14 @@ def ecrire_config(tmp_path: Path):
         paralleles: int = 10,
         echecs_avant_alerte: int = 2,
         intervalle: float | None = None,
+        retention: int | None = None,
     ) -> Path:
         sonde = f"[sonde]\ndelai = {delai}\nparalleles = {paralleles}\n"
         if intervalle is not None:
             sonde += f"intervalle = {intervalle}\n"
         lignes = [sonde, f"[alertes]\nechecs_avant_alerte = {echecs_avant_alerte}\n"]
+        if retention is not None:
+            lignes.append(f"[retention]\njours = {retention}\n")
         for numero, url in enumerate(urls, start=1):
             lignes.append(f'[[sites]]\nnom = "site {numero}"\nurl = "{url}"\n')
         chemin = tmp_path / "vigie.toml"
@@ -202,10 +205,39 @@ def postgres(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
 @pytest.fixture
 def base_vide(postgres: str) -> str:
     """Base avec les tables créées et vidées : chaque test part de zéro."""
-    from vigie import base
+    from vigie import base, migrateur
 
     with base.connecter(postgres) as conn:
-        base.initialiser(conn)
+        migrateur.migrer(conn)
         conn.execute("TRUNCATE sondes, incidents")
         conn.commit()
     return postgres
+
+
+@pytest.fixture
+def nouvelle_base(postgres: str) -> Iterator:
+    """Fabrique de bases entièrement vides (sans aucune table), supprimées après le test.
+
+    Pour les migrations : il faut partir d'une base neuve, ou d'une base créée par une
+    ancienne version de Vigie, pas de la base partagée par les autres tests.
+    """
+    import uuid
+
+    import psycopg
+    from psycopg import sql
+
+    creees: list[str] = []
+
+    def _creer() -> str:
+        nom = f"essai_{uuid.uuid4().hex[:12]}"
+        with psycopg.connect(postgres, autocommit=True) as conn:
+            conn.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(nom)))
+        creees.append(nom)
+        return postgres.replace("/vigie_test?", f"/{nom}?")
+
+    yield _creer
+    with psycopg.connect(postgres, autocommit=True) as conn:
+        for nom in creees:
+            conn.execute(
+                sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(sql.Identifier(nom))
+            )

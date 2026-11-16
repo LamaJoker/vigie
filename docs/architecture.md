@@ -1,6 +1,6 @@
 # Architecture
 
-## Aujourd'hui (étape 7)
+## Aujourd'hui (étape 8, lot 8.3)
 
 Vigie tourne en conteneurs sur le poste de développement, avec Docker Compose. Chaque modification passe par GitHub Actions, qui teste puis publie l'image.
 
@@ -9,7 +9,7 @@ flowchart LR
     subgraph poste["Poste : WSL2 et Docker Compose"]
         sonde["sonde<br/>vigie surveiller"]
         api["api<br/>page de statut et API"]
-        initdb["init-db<br/>crée les tables"]
+        migrations["migrations<br/>vigie migrer"]
         base[("base<br/>PostgreSQL 18")]
     end
     sites["Sites surveillés"]
@@ -17,10 +17,10 @@ flowchart LR
     navigateur["Navigateur"]
 
     sonde -->|"HTTP, toutes les 5 min"| sites
-    sonde -->|"mesures, incidents"| base
+    sonde -->|"mesures, incidents, purge quotidienne"| base
     sonde -->|"alertes"| discord
-    initdb --> base
-    api -->|"lecture"| base
+    migrations -->|"schéma"| base
+    api -->|"lecture, pool de 5 connexions"| base
     navigateur -->|"127.0.0.1:8000"| api
 
     subgraph github["GitHub"]
@@ -33,9 +33,9 @@ flowchart LR
 
 | Élément | Rôle | Exposition |
 |---|---|---|
-| `sonde` | teste les sites, enregistre les mesures, ouvre et ferme les incidents, envoie les alertes | aucune |
-| `api` | page de statut, API JSON, point de contrôle `/sante` | `127.0.0.1:8000` seulement |
-| `init-db` | crée les tables puis s'arrête | aucune |
+| `sonde` | teste les sites, enregistre les mesures, ouvre et ferme les incidents, envoie les alertes, purge chaque jour les mesures trop vieilles | aucune |
+| `api` | page de statut, API JSON, point de contrôle `/sante` ; 5 connexions à la base au plus | `127.0.0.1:8000` seulement |
+| `migrations` | crée ou met à jour les tables ([décision 0006](decisions/0006-migrateur-maison.md)), puis s'arrête | aucune |
 | `base` | PostgreSQL 18, données dans un volume | aucune, réseau interne seulement |
 
 ## Cible (étape 14)

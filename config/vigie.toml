@@ -16,6 +16,11 @@ fuseau = "Europe/Paris"  # fuseau horaire des heures affichées sur la page de s
 # d'environnement VIGIE_DISCORD_WEBHOOK (voir .env.exemple), jamais ici.
 echecs_avant_alerte = 2
 
+[retention]
+# Les mesures plus vieilles sont supprimées une fois par jour par la sonde (ou à la
+# demande : vigie purger). Les incidents, eux, sont toujours gardés.
+jours = 90
+
 [[sites]]
 nom = "Wikipédia"
 url = "https://www.wikipedia.org"

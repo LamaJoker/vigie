@@ -11,6 +11,7 @@ Une décision n'est jamais réécrite. Si elle change, une nouvelle décision la
 | [0003](0003-une-alerte-au-debut-une-a-la-fin.md) | Une alerte au début d'un incident, une à la fin, rien entre les deux | Acceptée |
 | [0004](0004-conteneurs-sans-root-lecture-seule.md) | Conteneurs sans root, en lecture seule, sans capacités Linux | Acceptée |
 | [0005](0005-tout-en-local-sans-frais.md) | Tout en local, pour 0 € : Incus et k3d plutôt qu'un cloud | Acceptée |
+| [0006](0006-migrateur-maison.md) | Un petit migrateur maison plutôt qu'Alembic | Acceptée |
 
 ## Modèle
 

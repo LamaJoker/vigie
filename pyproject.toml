@@ -11,6 +11,8 @@ requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.28,<1",
     "psycopg[binary]>=3.2,<4",
+    # pool de connexions de l'API ; check_connection existe depuis la 3.2
+    "psycopg-pool>=3.2,<4",
     "fastapi>=0.115",
     "uvicorn>=0.32",
     "jinja2>=3.1,<4",
@@ -33,7 +35,7 @@ vigie = "vigie.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-vigie = ["schema.sql", "modeles/*.html"]
+vigie = ["migrations/*.sql", "modeles/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/python"]

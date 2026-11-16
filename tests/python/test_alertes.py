@@ -163,13 +163,8 @@ def test_les_incidents_des_sites_surveilles_restent_ouverts(conn):
     assert incidents(conn)[0]["fin"] is None
 
 
-def test_le_schema_met_a_niveau_une_base_d_avant_le_lot_8_1(conn):
-    # Une base créée avant le lot 8.1 n'a pas la colonne motif_fin : rejouer le schéma l'ajoute.
-    conn.execute("ALTER TABLE incidents DROP COLUMN motif_fin")
-    conn.commit()
-    base.initialiser(conn)
-    passage(conn, panne(1), echecs_avant_alerte=1)
-    assert alertes.fermer_incidents_retires(conn, []) == 1
+# La mise à niveau d'une base d'avant le lot 8.1 (sans motif_fin) est vérifiée par les
+# migrations, à partir des anciens schémas : voir test_migrations.py.
 
 
 @pytest.mark.parametrize(

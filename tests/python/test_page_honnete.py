@@ -37,8 +37,22 @@ def enregistrer(url_base: str, *resultats: Resultat) -> None:
         base.enregistrer(conn, resultats)
 
 
+_clients_ouverts: list[TestClient] = []
+
+
+@pytest.fixture(autouse=True)
+def fermer_les_clients():
+    """Arrête après chaque test les applications démarrées par client() (et leur pool)."""
+    yield
+    while _clients_ouverts:
+        _clients_ouverts.pop().__exit__(None, None, None)
+
+
 def client(url_base: str, **reglages) -> TestClient:
-    return TestClient(creer_app(Configuration(sites=SITES, **reglages), url_base))
+    """Client de test d'une application démarrée : son pool de connexions est ouvert."""
+    ouvert = TestClient(creer_app(Configuration(sites=SITES, **reglages), url_base)).__enter__()
+    _clients_ouverts.append(ouvert)
+    return ouvert
 
 
 # ------------------------------------------------------------- configuration

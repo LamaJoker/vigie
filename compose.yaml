@@ -48,9 +48,11 @@ services:
     restart: unless-stopped
     # Aucun port publié : la base n'est joignable que par les autres conteneurs.
 
-  init-db:
+  # Crée ou met à jour les tables (migrations), puis s'arrête. L'API et la sonde ne
+  # démarrent qu'après sa réussite.
+  migrations:
     <<: *vigie
-    command: ["init-db"]
+    command: ["migrer"]
     depends_on:
       base:
         condition: service_healthy
@@ -64,7 +66,7 @@ services:
       # Publié seulement sur la machine elle-même (127.0.0.1), pas sur le réseau.
       - "127.0.0.1:${VIGIE_PORT:-8000}:8000"
     depends_on:
-      init-db:
+      migrations:
         condition: service_completed_successfully
     healthcheck:
       test:
@@ -86,7 +88,7 @@ services:
       VIGIE_DISCORD_WEBHOOK: ${VIGIE_DISCORD_WEBHOOK:-}
       VIGIE_INTERVALLE: ${VIGIE_INTERVALLE:-}
     depends_on:
-      init-db:
+      migrations:
         condition: service_completed_successfully
     # La sonde est « saine » si elle enregistre des mesures récentes. Une sonde qui tourne
     # mais n'écrit plus rien (base injoignable...) devient « unhealthy ».

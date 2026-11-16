@@ -16,12 +16,17 @@ Les versions 0.1 à 0.5 ont été reconstituées le 10/11/2026 à partir des pul
 - Mesures périmées : au-delà de 3 intervalles sans mesure, `/api/sites` renvoie `perime` et `age_secondes`, et la page affiche un bandeau orange au lieu du bandeau vert (lot 8.2).
 - Commande `vigie sante-sonde`, utilisée comme contrôle de santé du conteneur de la sonde (lot 8.2).
 - Dépendance `tzdata` : les fuseaux horaires fonctionnent même dans une image qui n'en contient pas (lot 8.2).
+- Migrations du schéma : fichiers numérotés dans `src/vigie/migrations/`, table `migrations` avec l'empreinte de chaque fichier, une transaction par migration, verrou consultatif PostgreSQL contre les lancements simultanés ; commande `vigie migrer`. Les bases créées par l'ancien `schema.sql` sont mises à niveau ([décision 0006](docs/decisions/0006-migrateur-maison.md)) (lot 8.3, [#11](https://github.com/LamaJoker/vigie/issues/11)).
+- Rétention des mesures : `[retention] jours` (90 par défaut), commande `vigie purger`, purge quotidienne par `vigie surveiller`. Les incidents sont gardés. Index sur la date des mesures (migration 0003) (lot 8.3).
+- Pool de connexions dans l'API (`psycopg-pool`) : 5 connexions au plus, nommées `vigie-api` dans `pg_stat_activity`, ouvertes et fermées avec l'application. Sous 50 requêtes simultanées, l'API ouvrait jusqu'à 40 connexions à la base ; elle en garde maintenant 5 au plus (lot 8.3).
 
 ### Modifié
 - Les « semaines » deviennent des « étapes » : `docs/semaines/` devient `docs/etapes/` (lot 0).
 - **Le temps de réponse mesuré s'arrête désormais à la réception des en-têtes** : la sonde ne télécharge plus le corps des pages. Les temps baissent d'environ 35 à 45 % sur les gros sites. Ils ne sont donc pas directement comparables à ceux d'avant (lot 8.1, [#9](https://github.com/LamaJoker/vigie/issues/9)).
 - `vigie surveiller` survit aux erreurs imprévues d'un passage, mais s'arrête avec le code 1 après 5 erreurs imprévues de suite, pour que Docker ou Kubernetes la relance (lot 8.1).
 - `VIGIE_INTERVALLE` doit être un nombre de secondes strictement positif : `0` est refusé, puisque l'intervalle sert aussi à juger la fraîcheur des mesures (lot 8.2).
+- `vigie init-db` devient `vigie migrer` ; l'ancien nom reste accepté. Le service Compose `init-db` s'appelle désormais `migrations` : après la mise à jour, `docker compose up --remove-orphans` supprime l'ancien conteneur arrêté (lot 8.3).
+- `schema.sql` disparaît, remplacé par les migrations (lot 8.3).
 
 ### Corrigé
 - Une adresse au port impossible (`https://example.com:99999`) faisait planter tout le passage : plus aucun site n'était mesuré. Elle est maintenant refusée au chargement de la configuration (lot 8.1).
