@@ -33,7 +33,9 @@ x-vigie: &vigie
 
 services:
   base:
-    image: postgres:18-alpine
+    # Désignée par son empreinte : l'étiquette 18-alpine peut changer de contenu (décision
+    # 0007). Dependabot propose les nouvelles versions.
+    image: postgres:18-alpine@sha256:b6972e1115a4ff8eba5d7f7d19184926d1e16d7d1136ae1e1a7ebf286da0f015
     environment:
       POSTGRES_USER: vigie
       POSTGRES_DB: vigie

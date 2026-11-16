@@ -1,7 +1,7 @@
 # Étape 8 : durcissement
 
-**Date :** à partir du 10 novembre 2026 (lot 8.1 : 10-11 novembre ; lots 8.2 et 8.3 : 16 novembre)
-**Statut :** en cours (lots 8.1 à 8.3 livrés)
+**Date :** à partir du 10 novembre 2026 (lot 8.1 : 10-11 novembre ; lots 8.2 à 8.4 : 16 novembre)
+**Statut :** en cours (lots 8.1 à 8.4 livrés)
 **Lots :** [#9](https://github.com/LamaJoker/vigie/issues/9) 8.1 · [#10](https://github.com/LamaJoker/vigie/issues/10) 8.2 · [#11](https://github.com/LamaJoker/vigie/issues/11) 8.3 · [#12](https://github.com/LamaJoker/vigie/issues/12) 8.4 · [#13](https://github.com/LamaJoker/vigie/issues/13) 8.5 · [#14](https://github.com/LamaJoker/vigie/issues/14) 8.6
 
 ## Objectif
@@ -429,6 +429,155 @@ psql -h "$PWD/.pgdata" -p 5433 -U vigie -d vigie -c 'SELECT * FROM migrations'
    <details><summary>Réponse</summary>
 
    Il évite d'ouvrir une connexion à chaque requête et borne leur nombre : 5 au lieu de 40 sous 50 requêtes simultanées. Le piège : après un redémarrage de la base, ses connexions en réserve sont mortes. Le pool les vérifiait une à une en patientant entre chaque, et la requête finissait en 503. Désormais, à la première connexion morte, il les vérifie toutes d'un coup. Voir `creer_pool` dans `src/vigie/base.py`.
+   </details>
+
+## Lot 8.4 : une construction reproductible
+
+### Le problème
+
+Défaut 9 de la revue du 10/11 : **la construction n'était pas reproductible.** Tout ce qu'elle téléchargeait était désigné par une étiquette qui peut changer de contenu :
+
+- les dépendances Python par des bornes (`fastapi>=0.115`), résolues le jour de la construction ;
+- les images Docker par une étiquette (`python:3.14-slim`, `postgres:18-alpine`, `hadolint/hadolint:latest-debian`) ;
+- les actions GitHub par une version majeure (`actions/checkout@v5`).
+
+Le même commit pouvait donc donner deux images différentes à une semaine d'écart. Et une étiquette déplacée par un attaquant aurait fait exécuter son code dans la CI : c'est arrivé en mars 2025 à l'action `tj-actions/changed-files`, dont les étiquettes ont été redirigées vers un code qui recopiait les secrets dans les journaux.
+
+### Ce qui a été fait
+
+**1. Les dépendances Python sont verrouillées avec uv.** `uv.lock` donne la version exacte et l'empreinte SHA-256 de chacun des 33 paquets, soit 425 empreintes : une par fichier publié, pour chaque système et chaque version de Python. Le verrou est **universel** : le même fichier vaut pour Python 3.12 à 3.14. `make installer`, la CI et le Dockerfile installent tous avec `uv sync --locked` :
+
+- `--locked` refuse un verrou qui ne correspond plus à `pyproject.toml` ;
+- uv refuse tout paquet téléchargé dont l'empreinte diffère de celle du verrou.
+
+`make verrouiller` recalcule le verrou après une modification de `pyproject.toml`.
+
+**2. L'outil de construction du paquet est figé lui aussi.** Avec setuptools, construire Vigie téléchargeait setuptools, sans empreinte, à chaque construction. Le projet passe à `uv_build`, intégré à uv : vérifié sur une copie, uv construit le paquet sans rien télécharger (« Using bundled `uv_build` backend »). Les migrations SQL et la page HTML sont bien dans le paquet.
+
+**3. uv a une version fixée partout.** `required-version = "==0.13.8"` dans `pyproject.toml` : uv refuse de travailler à une autre version, et l'action `setup-uv` de la CI lit cette valeur. Sur le poste, `scripts/installer-uv.sh` télécharge l'archive officielle et vérifie son empreinte, écrite dans le script, avant de l'extraire. Pas de `curl | sh`. L'empreinte a été recoupée entre l'API de GitHub et le fichier publié par Astral, l'éditeur de uv.
+
+**4. Images et actions sont désignées par leur empreinte.**
+
+| Quoi | Avant | Après |
+|---|---|---|
+| Images du Dockerfile | `python:3.14-slim` | `python:3.14-slim@sha256:9aaa47…`, et l'image de uv de même |
+| Base de `compose.yaml` | `postgres:18-alpine` | `postgres:18-alpine@sha256:b6972e…` |
+| hadolint, actionlint | `latest` | version précise et empreinte, une seule fois dans le Makefile |
+| Actions GitHub | `actions/checkout@v5` | `actions/checkout@3d3c42e…  # v7.0.1` |
+
+Au passage, les actions passent à leurs versions sur Node.js 24 : GitHub signalait que Node.js 20, abandonné, tournait encore. `astral-sh/setup-uv` remplace `actions/setup-python` : il installe uv et Python, ce qui fait une action de moins à surveiller.
+
+**5. Un contrôle automatique.** `scripts/verifier_epinglage.py`, lancé par `make lint` et la CI, lit le Dockerfile, `compose.yaml`, le Makefile, les workflows et les scripts. Il refuse toute action sans SHA de commit complet et sa version en commentaire, toute image sans empreinte, et un dépôt sans `uv.lock`.
+
+**6. Dependabot.** Chaque lundi, il propose par pull request les nouvelles versions des dépendances Python, des images et des actions. Les mises à jour mineures d'un même écosystème sont groupées. Une version doit avoir 7 jours avant d'être proposée, car une version piégée est souvent repérée et retirée dans les premiers jours. Il y a 5 pull requests ouvertes au plus. Pourquoi tout épingler, et pourquoi uv : [décision 0007](../decisions/0007-tout-epingler-par-empreinte.md).
+
+### Les tests
+
+**26 nouveaux tests** (287 au total). Lancé sur le dépôt d'avant le lot, le contrôle trouve **16 références sans empreinte**, plus l'absence de verrou :
+
+```
+uv.lock absent : les dépendances Python ne sont pas verrouillées
+Dockerfile, ligne 1 : syntaxe sans empreinte : docker/dockerfile:1
+Dockerfile, ligne 10 : image désignée par une variable : python:${PYTHON_VERSION}-slim
+compose.yaml, ligne 36 : image sans empreinte : postgres:18-alpine
+Makefile, ligne 115 : image sans empreinte : hadolint/hadolint:latest-debian
+.github/workflows/ci.yml, ligne 39 : action non épinglée par un SHA de commit complet : actions/checkout@v5
+…
+16 problème(s) d'épinglage
+```
+
+Les 5 tests qui portent sur le dépôt échouaient : dépôt entièrement épinglé, Dockerfile et CI qui installent depuis le verrou, construction sans téléchargement. Les 21 autres vérifient le contrôle lui-même sur des exemples, bons et mauvais.
+
+### Essais réels
+
+**Deux constructions de l'image, sans cache, à quelques minutes d'écart :** mêmes 24 paquets aux mêmes versions (`pip freeze` identique), par exemple `fastapi==0.163.1`, `httpx==0.28.1`, `psycopg==3.3.9`. L'image passe de 249 à 231 Mo ; entre autres, l'environnement de Vigie ne contient plus pip, inutile à l'exécution.
+
+**Une empreinte altérée dans une copie du verrou.** Premier essai : j'ai modifié la première empreinte trouvée pour httpx… et la construction a réussi. Explication : c'était l'empreinte de l'archive source (`.tar.gz`), que uv ne télécharge jamais puisqu'il prend le paquet précompilé (`.whl`). Second essai, sur l'empreinte du paquet réellement téléchargé :
+
+```
+error: Failed to download `httpx==0.28.1`
+  cause: Hash mismatch for `httpx==0.28.1`
+         Expected:
+           sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59a0
+         Computed:
+           sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
+ERROR: failed to build
+```
+
+La construction s'arrête : un paquet qui ne correspond pas exactement au verrou n'entre pas dans l'image. **Leçon :** un essai qui réussit quand il devrait échouer mérite qu'on comprenne pourquoi avant de conclure.
+
+**L'essai de bout en bout** (`make ci`) passe avec la nouvelle image et les nouveaux workflows, et actionlint valide les workflows.
+
+### Limites connues
+
+- Restent hors du verrou : les paquets système installés par `apt` dans la CI (bats, ShellCheck), les programmes préinstallés sur les machines de GitHub (PostgreSQL pour les tests), et ces machines elles-mêmes (`ubuntu-24.04` évolue chaque semaine).
+- Dependabot ne met pas à jour les images du Makefile (hadolint, actionlint) ni la version de uv dans `scripts/installer-uv.sh` et `required-version`. Ces trois-là se changent à la main. Si Dependabot propose seul une nouvelle image de uv, la CI échouera sur `required-version`, ce qui empêche de mélanger deux versions de uv.
+- Docker Hub limite les téléchargements anonymes. Avec 3 images par passage de CI, la limite est loin. Un miroir sera à prévoir si le rythme augmente.
+- La première vague de Dependabot arrivera le lundi suivant la fusion. Les pull requests ouvertes ce jour-là donneront une idée du rythme réel des mises à jour.
+
+### Vocabulaire du lot
+
+| Terme | Sens |
+|---|---|
+| Construction reproductible | Le même code source donne le même résultat, quel que soit le jour de la construction |
+| Verrou (*lockfile*) | Fichier qui fige la version exacte et l'empreinte de chaque dépendance, y compris les dépendances des dépendances |
+| Verrou universel | Un seul verrou valable pour toutes les versions de Python et tous les systèmes acceptés |
+| Épingler | Désigner une dépendance par son contenu exact (empreinte, SHA) plutôt que par un nom qui peut changer |
+| Étiquette mobile | Nom (`v5`, `latest`, `3.14-slim`) qu'on peut faire pointer vers un autre contenu |
+| Attaque de la chaîne d'approvisionnement | Attaque qui passe par une dépendance ou un outil de construction plutôt que par le code du projet |
+| Wheel | Paquet Python précompilé (`.whl`), prêt à installer, par opposition à l'archive source |
+
+### Parcours du superviseur
+
+Environ 30 minutes.
+
+#### À lancer
+
+```bash
+cd ~/vigie && git switch main && git pull
+scripts/installer-uv.sh      # rien à faire si uv 0.13.8 est déjà là
+make installer && make tests
+make lint                    # dernière ligne : le contrôle d'épinglage
+```
+
+Ouvre `uv.lock` et cherche `name = "httpx"` : version exacte, adresse de chaque fichier, et son empreinte.
+
+#### À casser
+
+1. Dans le `Dockerfile`, supprime `@sha256:…` de la première ligne `FROM python:…`. Lance `.venv/bin/python scripts/verifier_epinglage.py` : la ligne est refusée. Remets le fichier : `git checkout Dockerfile`.
+2. Altère l'empreinte du paquet httpx : `sed -i 's/6985b8ba59ad/6985b8ba59a0/' uv.lock`, puis `docker build -t vigie:essai .`. La construction s'arrête sur `Hash mismatch`. Si httpx a changé de version depuis, prends la fin de l'empreinte de sa ligne `.whl` dans `uv.lock`. Remets le fichier : `git checkout uv.lock`.
+3. Dans `pyproject.toml`, change `"jinja2>=3.1,<4"` en `"jinja2>=3.1.6,<4"`, puis `make installer` : uv refuse, parce que le verrou ne correspond plus. `make verrouiller` le recalcule. Remets tout : `git checkout pyproject.toml uv.lock`.
+
+#### Cinq questions
+
+1. Pourquoi une étiquette comme `v5` ou `3.14-slim` ne suffit-elle pas ?
+   <details><summary>Réponse</summary>
+
+   Une étiquette est un nom qui pointe vers un contenu, et on peut la déplacer. En mars 2025, les étiquettes de l'action `tj-actions/changed-files` ont été redirigées vers un code malveillant, exécuté par tous les dépôts qui les utilisaient. Un SHA de commit ou une empreinte d'image désigne un contenu exact, qui ne peut pas changer. Voir la décision 0007.
+   </details>
+
+2. Que contient `uv.lock` que `pyproject.toml` ne contient pas ?
+   <details><summary>Réponse</summary>
+
+   `pyproject.toml` donne des bornes (`fastapi>=0.115`). `uv.lock` donne la version exacte de chaque paquet, dépendances des dépendances comprises, et l'empreinte de chaque fichier. Il est universel : le même fichier sert pour Python 3.12 et 3.14.
+   </details>
+
+3. Que se passe-t-il si un paquet téléchargé ne correspond pas à son empreinte ?
+   <details><summary>Réponse</summary>
+
+   uv refuse de l'installer et la construction échoue (« Hash mismatch »). C'est ce qui protège contre un fichier remplacé sur le registre ou modifié en route. Essai dans la partie « Essais réels ».
+   </details>
+
+4. Pourquoi la première empreinte altérée n'a-t-elle pas fait échouer la construction ?
+   <details><summary>Réponse</summary>
+
+   C'était celle de l'archive source de httpx, que uv ne télécharge jamais : il installe le paquet précompilé (wheel), qui a sa propre empreinte. Un essai qui réussit quand on attend un échec doit être compris avant de conclure.
+   </details>
+
+5. Si tout est figé, comment le projet reçoit-il les correctifs de sécurité ?
+   <details><summary>Réponse</summary>
+
+   Par Dependabot : chaque lundi, il propose les nouvelles versions en pull request, testées par la CI. On les fusionne, et chaque mise à jour reste visible et réversible. Le délai de 7 jours laisse le temps de repérer une version piégée. Voir `.github/dependabot.yml`.
    </details>
 
 ## Temps de supervision

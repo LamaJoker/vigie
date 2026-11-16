@@ -1,28 +1,45 @@
-# syntax=docker/dockerfile:1
 # Image de Vigie, construite en deux étapes :
-#   1. « construction » installe Vigie et ses dépendances dans un environnement virtuel ;
+#   1. « construction » installe Vigie et ses dépendances dans un environnement virtuel,
+#      aux versions exactes de uv.lock, l'empreinte de chaque paquet étant vérifiée ;
 #   2. « execution » ne recopie que cet environnement : pas d'outils de construction,
 #      pas de code source en trop, et un utilisateur sans droits d'administration.
+#
+# Chaque image de départ est désignée par son empreinte (@sha256:...) et pas seulement
+# par son étiquette, qui peut être déplacée vers un autre contenu (décision 0007).
+# Dependabot propose chaque semaine les nouvelles versions.
 
-ARG PYTHON_VERSION=3.14
+# ------------------------------------------------------------------------- uv
+# Image officielle de uv, dont on ne prend que le programme. Même version que
+# required-version dans pyproject.toml.
+FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
 
 # ---------------------------------------------------------------- construction
-FROM python:${PYTHON_VERSION}-slim AS construction
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS construction
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+COPY --from=uv /uv /usr/local/bin/uv
 
-RUN python -m venv /opt/vigie
+# Environnement virtuel dans /opt/vigie, avec le Python de l'image (jamais téléchargé),
+# fichiers Python compilés d'avance, et sans cache (il ne servirait qu'une fois).
+ENV UV_PROJECT_ENVIRONMENT=/opt/vigie \
+    UV_PYTHON_DOWNLOADS=never \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1
 WORKDIR /construction
 
-# Les fichiers qui changent le moins en premier : Docker réutilise les étapes
-# déjà construites tant que leurs fichiers n'ont pas bougé (cache des couches).
-COPY pyproject.toml README.md ./
+# D'abord les dépendances seules : Docker garde cette étape en cache tant que le verrou
+# ne change pas. « --locked » refuse un verrou qui ne correspond plus à pyproject.toml,
+# et uv refuse tout paquet dont l'empreinte diffère de celle du verrou.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --no-dev --no-install-project
+
+# Puis Vigie elle-même, installée comme un paquet ordinaire (pas un lien vers les sources).
+COPY README.md ./
 COPY src ./src
-RUN /opt/vigie/bin/pip install .
+RUN uv sync --locked --no-dev --no-editable
 
 # ------------------------------------------------------------------- execution
-FROM python:${PYTHON_VERSION}-slim AS execution
+FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS execution
 
 LABEL org.opencontainers.image.title="Vigie" \
       org.opencontainers.image.description="Surveillance de sites web : sonde, API, page de statut, alertes" \

@@ -1,13 +1,19 @@
 # Intégration continue de Vigie.
 #
 # À chaque pull request et à chaque modification de main :
-#   1. qualite      : style et analyse du code (ruff, ShellCheck, hadolint, compose)
+#   1. qualite      : style et analyse (ruff, ShellCheck, hadolint, compose, épinglage)
 #   2. tests-python : tests pytest sur plusieurs versions de Python, avec PostgreSQL
 #   3. tests-bash   : tests bats de la version Bash
 #   4. docker       : construit l'image et lance l'essai de bout en bout de la pile
 #   5. publication  : sur main seulement, publie l'image sur GitHub Container Registry
 #
 # Les mêmes vérifications se lancent en local avec « make ci ».
+#
+# Chaque action est désignée par le SHA complet d'un commit, avec sa version en
+# commentaire : une étiquette comme « v5 » peut être déplacée vers un autre code, comme
+# lors de la compromission de tj-actions/changed-files en mars 2025 (décision 0007).
+# Les dépendances Python viennent de uv.lock, empreintes vérifiées. Dependabot propose
+# chaque semaine les nouvelles versions.
 
 name: CI
 
@@ -36,26 +42,29 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      # uv à la version fixée par required-version dans pyproject.toml, et Python.
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Installer les outils
-        run: pip install -e ".[dev]"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      - name: Le verrou correspond à pyproject.toml
+        run: uv lock --check
+      - name: Installer les outils, aux versions du verrou
+        run: uv sync --locked
       - name: ruff (style et erreurs Python)
         run: |
-          ruff check --output-format=github .
-          ruff format --check .
+          uv run --no-sync ruff check --output-format=github .
+          uv run --no-sync ruff format --check .
       - name: ShellCheck (scripts Bash)
-        run: shellcheck sonde/*.sh tests/docker/*.sh
+        run: shellcheck sonde/*.sh tests/docker/*.sh scripts/*.sh
       - name: Liens de la documentation
-        run: python scripts/verifier_liens.py
-      - name: hadolint (Dockerfile)
-        run: docker run --rm -i hadolint/hadolint:latest-debian < Dockerfile
-      - name: Validation de compose.yaml
-        run: VIGIE_MOT_DE_PASSE_BASE=verification docker compose config --quiet
+        run: uv run --no-sync python scripts/verifier_liens.py
+      - name: Épinglage (actions, images, dépendances)
+        run: uv run --no-sync python scripts/verifier_epinglage.py
+      - name: hadolint (Dockerfile) et validation de compose.yaml
+        run: make lint-docker
 
   tests-python:
     name: Tests Python ${{ matrix.python }}
@@ -67,24 +76,25 @@ jobs:
         # La plus ancienne version acceptée (pyproject.toml) et la plus récente.
         python: ["3.12", "3.14"]
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
-      - name: Installer Vigie et les outils de test
-        run: pip install -e ".[dev]"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # Le même verrou pour toutes les versions de Python : il est universel.
+      - name: Installer Vigie et les outils de test, aux versions du verrou
+        run: uv sync --locked
       # Les machines GitHub ont les programmes PostgreSQL : les tests lancent
       # leur propre base jetable avec, comme sur le poste de développement.
       - name: pytest
-        run: pytest --cov-report=term-missing --cov-report=xml --cov-fail-under=95
+        run: uv run --no-sync pytest --cov-report=term-missing --cov-report=xml --cov-fail-under=95
       - name: Résumé de la couverture
         if: always()
         env:
           VERSION: ${{ matrix.python }}
         run: |
-          python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
+          uv run --no-sync python - <<'EOF' >> "$GITHUB_STEP_SUMMARY"
           import os
           import xml.etree.ElementTree as ET
           taux = float(ET.parse("coverage.xml").getroot().get("line-rate")) * 100
@@ -96,7 +106,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Installer bats
         run: sudo apt-get update -q && sudo apt-get install -y -q bats
       - name: bats
@@ -108,12 +118,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Construire l'image et essayer toute la pile
         run: tests/docker/essai-pile.sh
       - name: Garder l'image pour la publication
         run: docker save vigie:local | gzip > image.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: image
           path: image.tar.gz
@@ -130,7 +140,7 @@ jobs:
       contents: read
       packages: write  # droit d'écrire dans le registre d'images, pour ce job seulement
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: image
       - name: Charger l'image testée

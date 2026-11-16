@@ -2,6 +2,14 @@
 
 VENV := .venv
 BIN := $(VENV)/bin
+# uv installe les dépendances aux versions exactes de uv.lock. S'il manque :
+# scripts/installer-uv.sh (version fixée, empreinte vérifiée).
+UV := $(or $(shell command -v uv 2>/dev/null),$(HOME)/.local/bin/uv)
+
+# Images des outils d'analyse, désignées par leur empreinte : une étiquette comme
+# « latest » peut changer de contenu à tout moment (docs/decisions/0007).
+IMAGE_HADOLINT := hadolint/hadolint:v2.15.1-debian@sha256:9a3944b7fddcb947d1ffd90829ac1a6e5c30479223358f249d8b96c7d0019e27
+IMAGE_ACTIONLINT := rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
 
 # Base PostgreSQL de développement : lancée à la demande dans .pgdata/,
 # joignable uniquement par un fichier socket (aucun port réseau ouvert).
@@ -14,12 +22,13 @@ BASE_DEV := postgresql://vigie@/vigie?host=$(PGDATA)&port=$(PGPORT)
 -include .env
 export VIGIE_DISCORD_WEBHOOK
 
-.PHONY: aide installer tests tests-python tests-bash lint format sonder serveur \
+.PHONY: aide installer verrouiller tests tests-python tests-bash lint format sonder serveur \
 	db-demarrer db-arreter tester-alerte docker-secrets docker-demarrer docker-arreter \
 	docker-etat docker-journaux lint-docker tests-docker lint-ci ci
 
 aide:
-	@echo "make installer     crée l'environnement virtuel et installe Vigie"
+	@echo "make installer     crée l'environnement virtuel et installe Vigie (versions de uv.lock)"
+	@echo "make verrouiller   recalcule uv.lock après une modification de pyproject.toml"
 	@echo "make tests         lance tous les tests (Python et Bash)"
 	@echo "make lint          vérifie le style et la qualité du code"
 	@echo "make format        met le code Python en forme"
@@ -41,11 +50,16 @@ aide:
 
 installer: $(VENV)/.installe
 
-$(VENV)/.installe: pyproject.toml
-	python3 -m venv $(VENV)
-	$(BIN)/pip install --quiet --upgrade pip
-	$(BIN)/pip install --quiet -e ".[dev]"
+# « --locked » : refuse de travailler si uv.lock ne correspond plus à pyproject.toml.
+$(VENV)/.installe: pyproject.toml uv.lock
+	@test -x "$(UV)" || { echo "uv n'est pas installé : lancer scripts/installer-uv.sh"; exit 1; }
+	$(UV) sync --locked --quiet
 	touch $@
+
+# Après avoir modifié les dépendances de pyproject.toml. Pour monter de version sans
+# changer pyproject.toml : uv lock --upgrade (Dependabot le propose chaque semaine).
+verrouiller:
+	$(UV) lock
 
 tests: tests-python tests-bash
 
@@ -56,10 +70,12 @@ tests-bash:
 	bats tests/bash/
 
 lint: installer
+	$(UV) lock --check
 	$(BIN)/ruff check .
 	$(BIN)/ruff format --check .
-	shellcheck sonde/*.sh tests/docker/*.sh
+	shellcheck sonde/*.sh tests/docker/*.sh scripts/*.sh
 	$(BIN)/python scripts/verifier_liens.py
+	$(BIN)/python scripts/verifier_epinglage.py
 
 format: installer
 	$(BIN)/ruff format .
@@ -112,7 +128,7 @@ docker-journaux:
 	docker compose logs --follow --tail=50
 
 lint-docker:
-	docker run --rm -i hadolint/hadolint:latest-debian < Dockerfile
+	docker run --rm -i $(IMAGE_HADOLINT) < Dockerfile
 	VIGIE_MOT_DE_PASSE_BASE=verification docker compose config --quiet
 	@echo "Dockerfile et compose.yaml : aucun problème"
 
@@ -121,7 +137,7 @@ tests-docker:
 
 # Vérifie la syntaxe et les pièges courants des workflows GitHub Actions.
 lint-ci:
-	docker run --rm -v "$(CURDIR):/depot:ro" -w /depot rhysd/actionlint:latest -color
+	docker run --rm -v "$(CURDIR):/depot:ro" -w /depot $(IMAGE_ACTIONLINT) -color
 
 # Les mêmes vérifications que GitHub Actions, sur le poste, avant de pousser.
 ci: lint lint-docker lint-ci tests tests-docker
