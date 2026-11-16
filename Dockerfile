@@ -14,7 +14,7 @@
 FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
 
 # ---------------------------------------------------------------- construction
-FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS construction
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS construction
 
 COPY --from=uv /uv /usr/local/bin/uv
 
@@ -39,7 +39,7 @@ COPY src ./src
 RUN uv sync --locked --no-dev --no-editable
 
 # ------------------------------------------------------------------- execution
-FROM python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS execution
+FROM python:3.15-slim@sha256:65a65fc7b30b06cb6df4930fd4650697cb23f4c2698ab81fc87e4b031bc36928 AS execution
 
 LABEL org.opencontainers.image.title="Vigie" \
       org.opencontainers.image.description="Surveillance de sites web : sonde, API, page de statut, alertes" \
